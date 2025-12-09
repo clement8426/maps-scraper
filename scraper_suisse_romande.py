@@ -420,35 +420,42 @@ def enrich_maps_details(page, maps_link):
             address_selectors = [
                 'button[data-item-id="address"]',
                 '[data-item-id="address"]',
-                'button:has-text("Rue"), button:has-text("Avenue"), button:has-text("Chemin")',
+                'button[data-value="Address"]',
                 'div[data-value="Address"]',
-                'span[data-value="Address"]'
+                'span[data-value="Address"]',
+                'button:has-text("Rue"), button:has-text("Avenue"), button:has-text("Chemin")',
+                'div:has-text("Rue"), div:has-text("Avenue"), div:has-text("Chemin")',
+                '[aria-label*="Rue"], [aria-label*="Avenue"], [aria-label*="Chemin"]'
             ]
             
             for selector in address_selectors:
                 try:
                     address_elem = page.locator(selector).first
                     if address_elem.count() > 0:
-                        address_text = address_elem.inner_text()
-                        if address_text and len(address_text) > 5:
-                            result["Address"] = address_text.strip()
-                            break
+                        address_text = address_elem.inner_text() or address_elem.get_attribute("aria-label") or ""
+                        if address_text and len(address_text) > 5 and len(address_text) < 150:
+                            # Vérifier que c'est bien une adresse (contient un numéro et un nom de rue)
+                            if any(x in address_text for x in ['Rue', 'Avenue', 'Chemin', 'Route', 'Place', 'Boulevard']) or \
+                               (re.search(r'\d+', address_text) and ('Genève' in address_text or 'Suisse' in address_text)):
+                                result["Address"] = address_text.strip()
+                                break
                 except:
                     continue
             
-            # Fallback: chercher dans le contenu de la page
+            # Fallback: chercher dans le contenu de la page avec BeautifulSoup
             if not result["Address"]:
                 try:
-                    # Chercher un texte qui ressemble à une adresse
                     page_content = page.content()
                     soup = BeautifulSoup(page_content, 'html.parser')
-                    # Chercher des patterns d'adresse
-                    for elem in soup.find_all(['button', 'div', 'span']):
-                        text = elem.get_text()
-                        if text and ('Rue' in text or 'Avenue' in text or 'Chemin' in text) and 'Genève' in text:
-                            if len(text) < 100:  # Éviter les textes trop longs
-                                result["Address"] = text.strip()
-                                break
+                    # Chercher des patterns d'adresse suisse
+                    for elem in soup.find_all(['button', 'div', 'span', 'a']):
+                        text = elem.get_text().strip()
+                        # Pattern: "Rue Caroline 23, 1227 Genève, Suisse"
+                        if text and re.search(r'\d+.*(Rue|Avenue|Chemin|Route|Place|Boulevard)', text, re.IGNORECASE):
+                            if 'Genève' in text or 'Suisse' in text or re.search(r'\d{4}', text):  # Code postal
+                                if 10 < len(text) < 150:
+                                    result["Address"] = text.strip()
+                                    break
                 except:
                     pass
         except Exception as e:
@@ -581,9 +588,11 @@ def enrich_maps_details(page, maps_link):
             hours_selectors = [
                 'div[data-value="Hours"]',
                 'button[data-value="Hours"]',
+                '[data-item-id="hours"]',
                 'div:has-text("Ouvert")',
                 'div:has-text("Fermé")',
-                '[data-item-id="hours"]'
+                'div:has-text("lundi"), div:has-text("mardi"), div:has-text("mercredi")',
+                'div:has-text("monday"), div:has-text("tuesday"), div:has-text("wednesday")'
             ]
             
             hours_text_parts = []
@@ -592,14 +601,37 @@ def enrich_maps_details(page, maps_link):
                     hours_elem = page.locator(selector).first
                     if hours_elem.count() > 0:
                         hours_text = hours_elem.inner_text()
-                        if hours_text and ('Ouvert' in hours_text or 'Fermé' in hours_text or 'lundi' in hours_text.lower() or 'monday' in hours_text.lower()):
+                        if hours_text and ('Ouvert' in hours_text or 'Fermé' in hours_text or 
+                                         'lundi' in hours_text.lower() or 'monday' in hours_text.lower() or
+                                         'mardi' in hours_text.lower() or 'tuesday' in hours_text.lower()):
                             hours_text_parts.append(hours_text.strip())
                 except:
                     continue
             
+            # Si on a trouvé des horaires, les combiner intelligemment
             if hours_text_parts:
-                # Prendre le premier texte d'horaires trouvé
-                result["Opening_Hours"] = hours_text_parts[0]
+                # Prendre le texte le plus complet (le plus long généralement)
+                result["Opening_Hours"] = max(hours_text_parts, key=len)
+            else:
+                # Fallback: chercher dans le HTML avec BeautifulSoup
+                try:
+                    page_content = page.content()
+                    soup = BeautifulSoup(page_content, 'html.parser')
+                    days = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche',
+                           'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                    
+                    hours_found = []
+                    for elem in soup.find_all(['div', 'span', 'button']):
+                        text = elem.get_text().strip()
+                        if any(day in text.lower() for day in days) and ('Ouvert' in text or 'Fermé' in text or 'Open' in text or 'Closed' in text):
+                            if len(text) < 500:  # Éviter les textes trop longs
+                                hours_found.append(text)
+                    
+                    if hours_found:
+                        # Prendre le premier ou combiner
+                        result["Opening_Hours"] = ' | '.join(hours_found[:7])  # Max 7 jours
+                except:
+                    pass
         except Exception as e:
             pass
             
