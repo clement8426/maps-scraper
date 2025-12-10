@@ -1168,8 +1168,22 @@ def main():
                             valid_emails = df_search['Email'].notna().sum()
                             print(f"   ✅ {valid_emails}/{len(df_search)} emails valides")
                             
-                            # Ajouter au DataFrame global
+                            # Ajouter au DataFrame global (sans doublons)
                             all_data.extend(df_search.to_dict('records'))
+                            
+                            # Supprimer les doublons basés sur le nom ET l'adresse
+                            df_all = pd.DataFrame(all_data)
+                            
+                            # Dédupliquer par Maps_Link (URL unique)
+                            df_all = df_all.drop_duplicates(subset=['Maps_Link'], keep='first')
+                            
+                            # Dédupliquer aussi par nom+ville pour les cas où Maps_Link diffère
+                            df_all['_temp_key'] = df_all['Company'].str.lower().str.strip() + '_' + df_all['City'].fillna('').str.lower()
+                            df_all = df_all.drop_duplicates(subset=['_temp_key'], keep='first')
+                            df_all = df_all.drop(columns=['_temp_key'])
+                            
+                            # Mettre à jour all_data avec les données dédupliquées
+                            all_data = df_all.to_dict('records')
                             
                             # Sauvegarder après chaque combinaison complète
                             df_all = pd.DataFrame(all_data)

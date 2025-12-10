@@ -213,8 +213,11 @@ def stop_scraper():
 @app.route('/api/export/csv')
 @auth.login_required
 def export_csv():
-    """Exporte les données en CSV"""
+    """Exporte les données en CSV avec filtres"""
     city = request.args.get('city', '')
+    has_website = request.args.get('has_website', '')
+    has_email = request.args.get('has_email', '')
+    search = request.args.get('search', '')
     
     import csv
     from io import StringIO
@@ -223,12 +226,26 @@ def export_csv():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    query = "SELECT * FROM companies"
+    query = "SELECT * FROM companies WHERE 1=1"
     params = []
     
     if city:
-        query += " WHERE city = ?"
+        query += " AND city = ?"
         params.append(city)
+    
+    if has_website == 'true':
+        query += " AND website IS NOT NULL AND website != ''"
+    elif has_website == 'false':
+        query += " AND (website IS NULL OR website = '')"
+    
+    if has_email == 'true':
+        query += " AND email IS NOT NULL AND email != ''"
+    elif has_email == 'false':
+        query += " AND (email IS NULL OR email = '')"
+    
+    if search:
+        query += " AND (company_name LIKE ? OR address LIKE ?)"
+        params.extend([f"%{search}%", f"%{search}%"])
     
     cursor.execute(query, params)
     companies = cursor.fetchall()
@@ -243,10 +260,23 @@ def export_csv():
             writer.writerow(dict(row))
     
     from flask import Response
+    
+    # Créer un nom de fichier descriptif
+    filename_parts = ["companies"]
+    if city:
+        filename_parts.append(city)
+    if has_website == 'true':
+        filename_parts.append("with_website")
+    if has_email == 'true':
+        filename_parts.append("with_email")
+    filename_parts.append(datetime.now().strftime('%Y%m%d'))
+    
+    filename = "_".join(filename_parts) + ".csv"
+    
     return Response(
         output.getvalue(),
         mimetype="text/csv",
-        headers={"Content-disposition": f"attachment; filename=companies_{city or 'all'}_{datetime.now().strftime('%Y%m%d')}.csv"}
+        headers={"Content-disposition": f"attachment; filename={filename}"}
     )
 
 if __name__ == '__main__':

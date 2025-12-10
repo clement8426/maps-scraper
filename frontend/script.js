@@ -42,6 +42,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resetFiltersBtn) resetFiltersBtn.addEventListener('click', resetFilters);
     if (exportCsvBtn) exportCsvBtn.addEventListener('click', exportCsv);
     
+    // Bouton export filtré (dans le titre des entreprises)
+    const exportFilteredBtn = document.getElementById('exportFiltered');
+    if (exportFilteredBtn) {
+        exportFilteredBtn.addEventListener('click', exportCsv);
+    }
+    
     if (startScraperBtn) {
         startScraperBtn.addEventListener('click', () => {
             console.log('Bouton Démarrer cliqué');
@@ -69,7 +75,7 @@ async function loadStats() {
         document.getElementById('withWebsite').textContent = stats.with_website;
         document.getElementById('withEmail').textContent = stats.with_email;
         document.getElementById('lastUpdate').textContent = stats.last_update ? 
-            new Date(stats.last_update).toLocaleString('fr-CH') : '-';
+            new Date(stats.last_update).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' }) : '-';
         
         // Top villes
         const citiesChart = document.getElementById('citiesChart');
@@ -116,6 +122,12 @@ async function loadCompanies() {
         
         document.getElementById('companiesCount').textContent = companies.length;
         
+        // Mettre à jour le compteur d'export
+        const exportCount = document.getElementById('exportCount');
+        if (exportCount) {
+            exportCount.textContent = companies.length;
+        }
+        
         const tbody = document.getElementById('companiesTable');
         if (companies.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center">Aucune entreprise trouvée</td></tr>';
@@ -161,10 +173,19 @@ function resetFilters() {
     loadCompanies();
 }
 
-// Export CSV
+// Export CSV avec tous les filtres
 function exportCsv() {
-    const city = currentFilters.city;
-    window.location.href = `/api/export/csv${city ? '?city=' + city : ''}`;
+    const params = new URLSearchParams();
+    
+    if (currentFilters.city) params.append('city', currentFilters.city);
+    if (currentFilters.has_website) params.append('has_website', currentFilters.has_website);
+    if (currentFilters.has_email) params.append('has_email', currentFilters.has_email);
+    if (currentFilters.search) params.append('search', currentFilters.search);
+    
+    const url = `/api/export/csv${params.toString() ? '?' + params.toString() : ''}`;
+    
+    console.log('Export CSV avec filtres:', currentFilters);
+    window.location.href = url;
 }
 
 // Scraper
