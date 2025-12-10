@@ -27,6 +27,19 @@ L'URL d'accès et les identifiants sont affichés en fin d'installation.
 - Les navigateurs Playwright sont installés dans `/home/$USER/.cache/ms-playwright`.
 - Le service systemd écoute en local `127.0.0.1:5000` derrière Nginx (port 80).
 
+## 🔐 Changer le mot de passe admin
+
+Si votre mot de passe a été compromis ou si vous voulez le changer :
+
+```bash
+cd ~/maps-scraper
+nano .env
+# Modifiez WEB_PASSWORD=VotreNouveauMotDePasse123!
+sudo systemctl restart scraper-web
+```
+
+📖 **Guide complet** : Voir `docs/CHANGE_PASSWORD.md`
+
 ## Commandes utiles
 ```bash
 # Statut du service
