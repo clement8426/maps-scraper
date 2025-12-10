@@ -4,7 +4,7 @@ pandas>=2.2.0  # Compatible Python 3.13
 requests==2.31.0
 dnspython==2.4.2
 email-validator==2.1.0
-lxml==4.9.3
+lxml>=5.0.0  # Compatible Python 3.13 (4.9.3 ne l'est pas)
 flask==3.0.0
 flask-httpauth==4.8.0
 gunicorn==21.2.0
