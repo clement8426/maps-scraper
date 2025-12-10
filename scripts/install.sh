@@ -43,15 +43,28 @@ apt-get install -y python3 python3-pip python3-venv -qq
 
 # Vérifier la version de Python
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}' | cut -d. -f1,2)
+UBUNTU_VERSION=$(lsb_release -cs 2>/dev/null || echo "unknown")
 echo "Version Python détectée: $PYTHON_VERSION"
+echo "Ubuntu version: $UBUNTU_VERSION"
+
 if [[ "$PYTHON_VERSION" == "3.13" ]]; then
-    echo -e "${YELLOW}⚠️  Python 3.13 détecté. Installation de Python 3.11 pour la compatibilité...${NC}"
-    apt-get install -y software-properties-common -qq
-    add-apt-repository -y ppa:deadsnakes/ppa
-    apt-get update -qq
-    apt-get install -y python3.11 python3.11-venv python3.11-dev -qq
-    # Utiliser python3.11 pour le reste du script
-    PYTHON_CMD="python3.11"
+    echo -e "${YELLOW}⚠️  Python 3.13 détecté.${NC}"
+    
+    # Vérifier si on peut installer Python 3.11 depuis le PPA
+    if [[ "$UBUNTU_VERSION" == "jammy" || "$UBUNTU_VERSION" == "noble" ]]; then
+        echo "Installation de Python 3.11 depuis deadsnakes PPA..."
+        apt-get install -y software-properties-common -qq
+        add-apt-repository -y ppa:deadsnakes/ppa
+        apt-get update -qq
+        apt-get install -y python3.11 python3.11-venv python3.11-dev -qq
+        PYTHON_CMD="python3.11"
+        echo -e "${GREEN}✅ Python 3.11 installé${NC}"
+    else
+        # Ubuntu trop récent (plucky, etc.) - utiliser Python 3.13 avec Pandas 2.2+
+        echo -e "${YELLOW}⚠️  Ubuntu $UBUNTU_VERSION - PPA deadsnakes non disponible${NC}"
+        echo -e "${YELLOW}Utilisation de Python 3.13 avec Pandas 2.2+ (compatible)${NC}"
+        PYTHON_CMD="python3"
+    fi
 else
     PYTHON_CMD="python3"
 fi
