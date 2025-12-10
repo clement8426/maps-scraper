@@ -20,6 +20,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(loadScraperStatus, 10000);
     setInterval(loadStats, 30000);
     
+    // Actualisation des logs toutes les 2 secondes si le scraper tourne
+    setInterval(() => {
+        const statusBadge = document.getElementById('scraperStatus');
+        if (statusBadge && statusBadge.textContent === 'En cours') {
+            loadLogs();
+        }
+    }, 2000);
+    
     // Event listeners
     const refreshBtn = document.getElementById('refreshBtn');
     const logoutBtn = document.getElementById('logoutBtn');
@@ -60,6 +68,30 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Bouton Arrêter cliqué');
             stopScraper();
         });
+    }
+    
+    // Bouton toggle logs
+    const toggleLogsBtn = document.getElementById('toggleLogs');
+    const showLogsBtn = document.getElementById('showLogsBtn');
+    const logsSection = document.getElementById('logsSection');
+    
+    const toggleLogs = () => {
+        if (logsSection.style.display === 'none') {
+            logsSection.style.display = 'block';
+            if (toggleLogsBtn) toggleLogsBtn.textContent = 'Masquer';
+            loadLogs(); // Charger les logs quand on affiche
+        } else {
+            logsSection.style.display = 'none';
+            if (toggleLogsBtn) toggleLogsBtn.textContent = 'Afficher';
+        }
+    };
+    
+    if (toggleLogsBtn) {
+        toggleLogsBtn.addEventListener('click', toggleLogs);
+    }
+    
+    if (showLogsBtn) {
+        showLogsBtn.addEventListener('click', toggleLogs);
     }
     
     console.log('Initialisation terminée');
@@ -212,6 +244,15 @@ async function loadScraperStatus() {
             progress.textContent = `${status.last_city || '...'} - ${status.last_keyword || '...'} (${status.completed_combinations} terminées)`;
             startBtn.disabled = true;
             stopBtn.disabled = false;
+            
+            // Afficher et charger les logs automatiquement quand le scraper tourne
+            const logsSection = document.getElementById('logsSection');
+            if (logsSection && logsSection.style.display === 'none') {
+                logsSection.style.display = 'block';
+                const toggleBtn = document.getElementById('toggleLogs');
+                if (toggleBtn) toggleBtn.textContent = 'Masquer';
+            }
+            loadLogs();
         } else {
             statusBadge.textContent = 'Arrêté';
             statusBadge.className = 'status-badge status-stopped';
@@ -245,9 +286,17 @@ async function startScraper() {
         
         if (response.ok) {
             alert('✅ Scraper démarré !');
+            // Afficher les logs
+            const logsSection = document.getElementById('logsSection');
+            if (logsSection) {
+                logsSection.style.display = 'block';
+                const toggleBtn = document.getElementById('toggleLogs');
+                if (toggleBtn) toggleBtn.textContent = 'Masquer';
+            }
             // Attendre un peu avant de vérifier le statut
             setTimeout(() => {
                 loadScraperStatus();
+                loadLogs();
             }, 1000);
             setTimeout(() => {
                 loadStats();
@@ -292,6 +341,58 @@ async function stopScraper() {
     } catch (error) {
         console.error('Erreur:', error);
         alert('❌ Erreur lors de l\'arrêt: ' + error.message);
+    }
+}
+
+// Charger les logs du scraper
+let lastLogLines = 0;
+
+async function loadLogs() {
+    try {
+        const response = await fetch('/api/scraper/logs?lines=200', {
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            console.error('Erreur chargement logs:', response.status);
+            return;
+        }
+        
+        const data = await response.json();
+        const logsContent = document.getElementById('logsContent');
+        
+        if (logsContent && data.logs) {
+            // Afficher les logs (les plus récents en bas)
+            logsContent.innerHTML = data.logs.map(line => {
+                // Colorier certaines lignes
+                let className = 'log-line';
+                if (line.includes('✅') || line.includes('Trouvé')) {
+                    className += ' log-success';
+                } else if (line.includes('❌') || line.includes('Erreur')) {
+                    className += ' log-error';
+                } else if (line.includes('⚠️') || line.includes('Warning')) {
+                    className += ' log-warning';
+                } else if (line.includes('🔍') || line.includes('PHASE')) {
+                    className += ' log-info';
+                }
+                
+                // Échapper HTML pour sécurité
+                const escapedLine = line
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                
+                return `<div class="${className}">${escapedLine}</div>`;
+            }).join('');
+            
+            // Scroll automatique vers le bas si on était déjà en bas
+            const wasScrolledToBottom = logsContent.scrollHeight - logsContent.scrollTop <= logsContent.clientHeight + 50;
+            if (wasScrolledToBottom) {
+                logsContent.scrollTop = logsContent.scrollHeight;
+            }
+        }
+    } catch (error) {
+        console.error('Erreur chargement logs:', error);
     }
 }
 

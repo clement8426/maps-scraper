@@ -23,6 +23,7 @@ auth = HTTPBasicAuth()
 DATABASE_FILE = "companies.db"
 CHECKPOINT_FILE = "checkpoint.json"
 INTERMEDIATE_FILE = "intermediate_data.csv"
+LOG_FILE = "scraper.log"
 
 # Mot de passe par défaut (à changer via variables d'environnement)
 users = {
@@ -219,16 +220,25 @@ def start_scraper():
         if not os.path.exists(scraper_script):
             return jsonify({"error": f"Fichier scraper non trouvé: {scraper_script}"}), 500
         
-        # Lancer le scraper en arrière-plan avec nohup pour qu'il continue même si la connexion se ferme
+        # Ouvrir le fichier de log en mode append (ne pas fermer, le processus l'utilise)
+        log_path = os.path.join(backend_dir, LOG_FILE)
+        # Créer/vider le fichier de log au démarrage
+        with open(log_path, 'w', encoding='utf-8') as f:
+            f.write(f"=== Scraper démarré le {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+        
+        log_file = open(log_path, 'a', encoding='utf-8', buffering=1)  # Line buffered
+        
+        # Lancer le scraper en arrière-plan avec redirection vers le fichier de log
         scraper_process = subprocess.Popen(
             [python_cmd, scraper_script],
             cwd=backend_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,  # Rediriger stderr vers stdout
             text=True,
             env=os.environ.copy(),
             start_new_session=True  # Détacher du groupe de processus
         )
+        # Ne pas fermer log_file, le processus en a besoin
         scraper_running = True
         
         # Vérifier immédiatement si le processus a crashé
@@ -269,6 +279,36 @@ def stop_scraper():
         return jsonify({"message": "Scraper arrêté"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/scraper/logs')
+@auth.login_required
+def get_scraper_logs():
+    """Récupère les logs du scraper"""
+    log_path = os.path.join(os.path.dirname(__file__), LOG_FILE)
+    
+    # Lire les dernières lignes du fichier de log
+    lines = request.args.get('lines', 100, type=int)
+    
+    if not os.path.exists(log_path):
+        return jsonify({"logs": [], "total_lines": 0})
+    
+    try:
+        with open(log_path, 'r', encoding='utf-8') as f:
+            all_lines = f.readlines()
+            total_lines = len(all_lines)
+            # Retourner les N dernières lignes
+            recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+            
+            # Nettoyer les lignes (retirer \n, etc.)
+            cleaned_lines = [line.rstrip('\n\r') for line in recent_lines]
+            
+            return jsonify({
+                "logs": cleaned_lines,
+                "total_lines": total_lines,
+                "showing": len(cleaned_lines)
+            })
+    except Exception as e:
+        return jsonify({"error": str(e), "logs": [], "total_lines": 0}), 500
 
 @app.route('/api/export/csv')
 @auth.login_required

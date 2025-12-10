@@ -51,7 +51,16 @@
                 <div class="control-buttons">
                     <button id="startScraper" class="btn btn-success">▶️ Démarrer</button>
                     <button id="stopScraper" class="btn btn-danger" disabled>⏹️ Arrêter</button>
+                    <button id="showLogsBtn" class="btn btn-secondary">📋 Voir les logs</button>
                 </div>
+            </div>
+        </section>
+
+        <!-- Logs du scraper -->
+        <section class="scraper-logs" id="logsSection" style="display: none;">
+            <h2>📋 Logs du Scraper <button id="toggleLogs" class="btn btn-small btn-secondary">Afficher</button></h2>
+            <div class="logs-container">
+                <div id="logsContent" class="logs-content"></div>
             </div>
         </section>
 

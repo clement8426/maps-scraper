@@ -138,6 +138,69 @@ section h2 {
     margin-left: auto;
 }
 
+/* Logs du scraper */
+.scraper-logs {
+    background: var(--card-bg);
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.scraper-logs h2 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    font-size: 20px;
+}
+
+.btn-small {
+    padding: 5px 15px;
+    font-size: 12px;
+}
+
+.logs-container {
+    background: #1e1e1e;
+    border-radius: 5px;
+    padding: 15px;
+    max-height: 400px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+}
+
+.logs-content {
+    color: #d4d4d4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.5;
+}
+
+.logs-content .log-line {
+    margin-bottom: 2px;
+}
+
+.logs-content .log-line:last-child {
+    margin-bottom: 0;
+}
+
+.logs-content .log-success {
+    color: #4ade80;
+}
+
+.logs-content .log-error {
+    color: #f87171;
+}
+
+.logs-content .log-warning {
+    color: #fbbf24;
+}
+
+.logs-content .log-info {
+    color: #60a5fa;
+}
+
 /* Filtres */
 .filters-grid {
     display: grid;
