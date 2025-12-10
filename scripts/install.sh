@@ -41,6 +41,21 @@ apt-get install -y pkg-config libatlas-base-dev libblas-dev liblapack-dev gfortr
 echo "🐍 Installation de Python 3 et pip..."
 apt-get install -y python3 python3-pip python3-venv -qq
 
+# Vérifier la version de Python
+PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}' | cut -d. -f1,2)
+echo "Version Python détectée: $PYTHON_VERSION"
+if [[ "$PYTHON_VERSION" == "3.13" ]]; then
+    echo -e "${YELLOW}⚠️  Python 3.13 détecté. Installation de Python 3.11 pour la compatibilité...${NC}"
+    apt-get install -y software-properties-common -qq
+    add-apt-repository -y ppa:deadsnakes/ppa
+    apt-get update -qq
+    apt-get install -y python3.11 python3.11-venv python3.11-dev -qq
+    # Utiliser python3.11 pour le reste du script
+    PYTHON_CMD="python3.11"
+else
+    PYTHON_CMD="python3"
+fi
+
 # 4. Installation de Node.js (pour certaines dépendances)
 echo "📦 Installation de Node.js..."
 apt-get install -y curl -qq
@@ -83,13 +98,13 @@ if [ -d "$APP_DIR/venv" ]; then
     echo -e "${YELLOW}⚠️  Le venv existe déjà, suppression...${NC}"
     rm -rf "$APP_DIR/venv"
 fi
-python3 -m venv "$APP_DIR/venv"
+${PYTHON_CMD:-python3} -m venv "$APP_DIR/venv"
 if [ ! -d "$APP_DIR/venv" ]; then
     echo -e "${RED}❌ Erreur lors de la création du venv !${NC}"
     exit 1
 fi
 source "$APP_DIR/venv/bin/activate"
-echo -e "${GREEN}✅ Environnement virtuel créé dans $APP_DIR/venv${NC}"
+echo -e "${GREEN}✅ Environnement virtuel créé dans $APP_DIR/venv avec ${PYTHON_CMD:-python3}${NC}"
 
 # 10. Installer les dépendances Python
 echo "📦 Installation des dépendances Python..."
