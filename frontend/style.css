@@ -381,6 +381,12 @@ a:hover {
     color: var(--warning);
 }
 
+/* Export filtered button */
+.export-filtered-btn {
+    float: right;
+    margin-top: -5px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .stats-grid {
@@ -413,6 +419,12 @@ a:hover {
 
     .header-actions button {
         flex: 1;
+    }
+
+    .export-filtered-btn {
+        float: none;
+        margin-top: 10px;
+        width: 100%;
     }
 }
 
