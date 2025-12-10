@@ -86,14 +86,10 @@ apt-get install -y nginx -qq
 echo "🔥 Installation du firewall..."
 apt-get install -y ufw -qq
 
-# 7. Créer un utilisateur pour l'application (si n'existe pas)
-if ! id "scraper" &>/dev/null; then
-    echo "👤 Création de l'utilisateur 'scraper'..."
-    useradd -m -s /bin/bash scraper
-fi
-
-# 8. Définir le répertoire de travail
-APP_DIR="/home/scraper/maps-scraper"
+# 7. Définir l'utilisateur et le répertoire de travail
+TARGET_USER=${SUDO_USER:-$USER}
+APP_DIR="/home/$TARGET_USER/maps-scraper"
+echo "👤 Utilisateur cible: $TARGET_USER"
 echo "📁 Répertoire de l'application: $APP_DIR"
 
 # Si le script est lancé depuis le repo cloné, copier les fichiers
@@ -126,10 +122,12 @@ pip install --upgrade pip -qq
 pip install -r requirements.txt -qq
 pip install flask flask-httpauth gunicorn -qq
 
-# 11. Installer Playwright et Firefox
-echo "🎭 Installation de Playwright et Firefox..."
-playwright install firefox
-playwright install-deps firefox
+# 11. Installer Playwright et ses navigateurs
+echo "🎭 Installation de Playwright et des navigateurs (firefox + chromium)..."
+# Installer les dépendances système (une seule fois, en root)
+$APP_DIR/venv/bin/python -m playwright install-deps firefox chromium || true
+# Installer les navigateurs pour l'utilisateur cible (cache dans /home/$TARGET_USER/.cache)
+runuser -u "$TARGET_USER" -- bash -c "cd \"$APP_DIR\" && \"$APP_DIR/venv/bin/python\" -m playwright install firefox chromium"
 
 # 12. Configuration des variables d'environnement
 if [ ! -f .env ]; then
@@ -158,7 +156,7 @@ fi
 
 # 13. Changer les permissions
 echo "🔒 Configuration des permissions..."
-chown -R scraper:scraper $APP_DIR
+chown -R $TARGET_USER:$TARGET_USER $APP_DIR
 chmod +x scripts/*.sh
 
 # 14. Configuration de Nginx
@@ -207,7 +205,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=scraper
+User=$TARGET_USER
 WorkingDirectory=$APP_DIR/backend
 Environment="PATH=$APP_DIR/venv/bin"
 EnvironmentFile=$APP_DIR/.env
