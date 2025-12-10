@@ -361,7 +361,12 @@ async function loadLogs() {
         const data = await response.json();
         const logsContent = document.getElementById('logsContent');
         
-        if (logsContent && data.logs) {
+        if (logsContent) {
+            if (!data.logs || data.logs.length === 0) {
+                logsContent.innerHTML = '<div class="log-line log-warning">Aucun log disponible pour le moment. Le scraper démarre peut-être...</div>';
+                return;
+            }
+            
             // Afficher les logs (les plus récents en bas)
             logsContent.innerHTML = data.logs.map(line => {
                 // Colorier certaines lignes

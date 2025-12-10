@@ -17,6 +17,13 @@ from datetime import datetime
 import sqlite3
 import dns.resolver
 from email_validator import validate_email, EmailNotValidError
+import sys
+
+# Forcer le flush des print() pour voir les logs en temps réel
+def print_flush(*args, **kwargs):
+    """Print avec flush automatique"""
+    print(*args, **kwargs)
+    sys.stdout.flush()
 
 # --- CONFIGURATION ---
 # Villes du canton de Neuchâtel et alentours (priorité)

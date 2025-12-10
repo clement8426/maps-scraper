@@ -12,6 +12,7 @@ import os
 import subprocess
 import threading
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 app = Flask(__name__, 
             template_folder='../frontend',
@@ -223,14 +224,20 @@ def start_scraper():
         # Ouvrir le fichier de log en mode append (ne pas fermer, le processus l'utilise)
         log_path = os.path.join(backend_dir, LOG_FILE)
         # Créer/vider le fichier de log au démarrage
+        paris_tz = ZoneInfo('Europe/Paris')
+        paris_time = datetime.now(paris_tz)
         with open(log_path, 'w', encoding='utf-8') as f:
-            f.write(f"=== Scraper démarré le {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+            f.write(f"=== Scraper démarré le {paris_time.strftime('%Y-%m-%d %H:%M:%S')} (heure de Paris) ===\n")
+            f.flush()  # Forcer l'écriture
         
+        # Ouvrir en mode append avec line buffered pour voir les logs en temps réel
         log_file = open(log_path, 'a', encoding='utf-8', buffering=1)  # Line buffered
+        log_file.flush()  # Forcer le flush initial
         
         # Lancer le scraper en arrière-plan avec redirection vers le fichier de log
+        # Utiliser -u pour unbuffered output (voir les logs en temps réel)
         scraper_process = subprocess.Popen(
-            [python_cmd, scraper_script],
+            [python_cmd, '-u', scraper_script],  # -u = unbuffered
             cwd=backend_dir,
             stdout=log_file,
             stderr=subprocess.STDOUT,  # Rediriger stderr vers stdout
@@ -243,18 +250,24 @@ def start_scraper():
         
         # Vérifier immédiatement si le processus a crashé
         import time
-        time.sleep(1)
+        time.sleep(2)  # Attendre un peu plus pour voir les premiers logs
         if scraper_process.poll() is not None:
             # Le processus s'est terminé immédiatement (erreur)
+            # Lire les logs du fichier pour voir l'erreur
             try:
-                stdout_output, stderr_output = scraper_process.communicate(timeout=1)
-                error_msg = stderr_output if stderr_output else stdout_output
-            except:
-                error_msg = "Impossible de lire l'erreur"
+                if os.path.exists(log_path):
+                    with open(log_path, 'r', encoding='utf-8') as f:
+                        log_content = f.read()
+                        error_msg = log_content[-1000:] if len(log_content) > 1000 else log_content
+                else:
+                    error_msg = "Fichier de log non créé"
+            except Exception as e:
+                error_msg = f"Impossible de lire les logs: {str(e)}"
             
             scraper_running = False
             scraper_process = None
-            return jsonify({"error": f"Le scraper s'est arrêté immédiatement. Erreur: {error_msg[:500]}"}), 500
+            log_file.close()  # Fermer le fichier maintenant qu'on sait que le processus est mort
+            return jsonify({"error": f"Le scraper s'est arrêté immédiatement. Derniers logs:\n{error_msg}"}), 500
         
         return jsonify({"message": "Scraper démarré"})
     except Exception as e:
