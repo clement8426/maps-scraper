@@ -14,25 +14,53 @@ from urllib.parse import urljoin, urlparse
 import json
 import os
 from datetime import datetime
+import sqlite3
+import dns.resolver
+from email_validator import validate_email, EmailNotValidError
 
 # --- CONFIGURATION ---
+# Villes du canton de Neuchâtel et alentours (priorité)
 CITIES = [
-    "Genève", "Lausanne", "Yverdon-les-Bains", "Neuchâtel", 
-    "Fribourg", "Sion", "Nyon", "Renens", "La Chaux-de-Fonds", 
-    "Meyrin", "Plan-les-Ouates", "Martigny"
+    # Canton de Neuchâtel
+    "Neuchâtel", "La Chaux-de-Fonds", "Le Locle", "Val-de-Ruz", 
+    "Val-de-Travers", "Fleurier", "Cernier", "Peseux", "Colombier", 
+    "Marin-Epagnier", "Saint-Blaise", "Boudry", "Cressier",
+    # Villes proches hors canton
+    "Yverdon-les-Bains", "Pontarlier", "Morteau", "Besançon",
+    # Autres villes Suisse Romande (existantes)
+    "Genève", "Lausanne", "Fribourg", "Sion", "Nyon", "Renens", 
+    "Meyrin", "Plan-les-Ouates", "Martigny", "Vevey", "Montreux",
+    "Delémont", "Porrentruy"
 ]
 
 KEYWORDS = [
+    # Développement web & digital
     "Agence Web", "Développement logiciel", "Conception de sites web", 
-    "Full Stack", "Éditeur de logiciels", "Startup", "SaaS company", 
-    "App development", "Cybersécurité", "Sécurité informatique", 
+    "Création site internet", "Agence digitale", "Web design",
+    "Développeur web", "Intégrateur web", "UX Designer",
+    # Développement spécialisé
+    "Full Stack", "Frontend developer", "Backend developer",
+    "App development", "Mobile app", "Application mobile",
+    "E-commerce", "Site e-commerce", "Boutique en ligne",
+    # Software & SaaS
+    "Éditeur de logiciels", "Software development", "SaaS company", 
+    "Startup tech", "Tech startup", "Scale-up",
+    # Sécurité & infrastructure
+    "Cybersécurité", "Sécurité informatique", "Consultant IT",
     "Consultant informatique", "Services informatiques entreprises", 
-    "Cloud provider"
+    "Cloud provider", "DevOps", "Infrastructure IT",
+    # Marketing digital
+    "SEO", "Référencement web", "Marketing digital",
+    "Social media management", "Community manager",
+    # Data & IA
+    "Data science", "Intelligence artificielle", "Machine Learning",
+    "Big Data", "Data analyst"
 ]
 
 OUTPUT_FILE = "base_tech_suisse.csv"
 CHECKPOINT_FILE = "checkpoint.json"
 INTERMEDIATE_FILE = "intermediate_data.csv"
+DATABASE_FILE = "companies.db"
 
 # Navigateur à utiliser: "chromium" ou "firefox"
 # Firefox semble mieux fonctionner avec Google Maps
@@ -44,16 +72,146 @@ MAX_DELAY = 4.0
 MIN_PAGE_DELAY = 0.5
 MAX_PAGE_DELAY = 2.0
 
-# User agents rotatifs
+# User agents rotatifs (plus de variété)
 USER_AGENTS = [
+    # Chrome Windows
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    # Chrome macOS
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    # Chrome Linux
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    # Firefox Windows
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0',
+    # Firefox macOS
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 13.5; rv:120.0) Gecko/20100101 Firefox/120.0',
+    # Safari macOS
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+    # Edge Windows
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
 ]
 
 def random_delay(min_sec=MIN_DELAY, max_sec=MAX_DELAY):
     """Délai aléatoire pour simuler un comportement humain"""
     time.sleep(random.uniform(min_sec, max_sec))
+
+def init_database():
+    """Initialise la base de données SQLite"""
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS companies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_name TEXT NOT NULL,
+            maps_link TEXT UNIQUE,
+            city TEXT,
+            tag TEXT,
+            address TEXT,
+            phone TEXT,
+            website TEXT,
+            rating REAL,
+            reviews_count INTEGER,
+            email TEXT,
+            social_links TEXT,
+            status TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+    print(f"✅ Base de données initialisée: {DATABASE_FILE}")
+
+def save_to_database(df):
+    """Sauvegarde les données dans la base SQLite"""
+    conn = sqlite3.connect(DATABASE_FILE)
+    
+    for _, row in df.iterrows():
+        try:
+            conn.execute('''
+                INSERT OR REPLACE INTO companies 
+                (company_name, maps_link, city, tag, address, phone, website, 
+                 rating, reviews_count, email, social_links, status, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (
+                row.get('Company'),
+                row.get('Maps_Link'),
+                row.get('City'),
+                row.get('Tag'),
+                row.get('Address'),
+                row.get('Phone'),
+                row.get('Website'),
+                row.get('Rating'),
+                row.get('Reviews_Count'),
+                row.get('Email'),
+                row.get('Social_Links'),
+                row.get('Status')
+            ))
+        except Exception as e:
+            print(f"    ⚠️  Erreur insertion BDD: {e}")
+    
+    conn.commit()
+    conn.close()
+
+def verify_email_dns(email):
+    """Vérifie si un email est valide via DNS MX records"""
+    if not email or '@' not in email:
+        return False
+    
+    # Emails génériques à exclure
+    generic_emails = [
+        'example.com', 'test.com', 'demo.com', 'sample.com',
+        'noreply', 'no-reply', 'donotreply', 'info@example',
+        'contact@example', 'admin@example'
+    ]
+    
+    email_lower = email.lower()
+    if any(generic in email_lower for generic in generic_emails):
+        return False
+    
+    try:
+        # Validation basique du format
+        valid = validate_email(email, check_deliverability=False)
+        domain = valid.domain
+        
+        # Vérification DNS MX
+        try:
+            mx_records = dns.resolver.resolve(domain, 'MX')
+            if mx_records:
+                return True
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers):
+            return False
+        except Exception:
+            # Si erreur DNS, on garde l'email quand même
+            return True
+            
+    except EmailNotValidError:
+        return False
+    except Exception:
+        return False
+    
+    return False
+
+def clean_emails(emails_string):
+    """Nettoie et valide les emails"""
+    if not emails_string or pd.isna(emails_string):
+        return None
+    
+    emails = [e.strip() for e in str(emails_string).split(',')]
+    valid_emails = []
+    
+    for email in emails:
+        if verify_email_dns(email):
+            valid_emails.append(email)
+        else:
+            print(f"    ❌ Email invalide/fictif rejeté: {email}")
+    
+    return ', '.join(valid_emails) if valid_emails else None
 
 def load_checkpoint():
     """Charge le checkpoint pour reprendre où on s'est arrêté"""
@@ -76,7 +234,10 @@ def save_checkpoint(city, keyword, completed):
 def load_intermediate_data():
     """Charge les données intermédiaires si elles existent"""
     if os.path.exists(INTERMEDIATE_FILE):
-        return pd.read_csv(INTERMEDIATE_FILE)
+        df = pd.read_csv(INTERMEDIATE_FILE)
+        # Remplacer les chaînes vides par NaN pour faciliter la détection
+        df = df.replace('', pd.NA)
+        return df
     return pd.DataFrame()
 
 def save_intermediate_data(df):
@@ -348,7 +509,6 @@ def scrape_gmaps_urls(search_term, city, page, browser, context):
                         "Website": None,
                         "Rating": None,
                         "Reviews_Count": None,
-                        "Opening_Hours": None,
                         "Email": None,
                         "Social_Links": None,
                         "Status": "Harvested"
@@ -378,18 +538,16 @@ def enrich_maps_details(page, maps_link):
             "Phone": None,
             "Website": None,
             "Rating": None,
-            "Reviews_Count": None,
-            "Opening_Hours": None
+            "Reviews_Count": None
         }
     
     result = {
-        "Address": None,
-        "Phone": None,
-        "Website": None,
-        "Rating": None,
-        "Reviews_Count": None,
-        "Opening_Hours": None
-    }
+            "Address": None,
+            "Phone": None,
+            "Website": None,
+            "Rating": None,
+            "Reviews_Count": None
+        }
     
     try:
         page.goto(maps_link, timeout=20000, wait_until="networkidle")
@@ -415,223 +573,247 @@ def enrich_maps_details(page, maps_link):
         except:
             pass
         
-        # 1. ADRESSE COMPLÈTE
+        # Attendre que la page soit complètement chargée
         try:
-            address_selectors = [
-                'button[data-item-id="address"]',
-                '[data-item-id="address"]',
-                'button[data-value="Address"]',
-                'div[data-value="Address"]',
-                'span[data-value="Address"]',
-                'button:has-text("Rue"), button:has-text("Avenue"), button:has-text("Chemin")',
-                'div:has-text("Rue"), div:has-text("Avenue"), div:has-text("Chemin")',
-                '[aria-label*="Rue"], [aria-label*="Avenue"], [aria-label*="Chemin"]'
-            ]
-            
-            for selector in address_selectors:
-                try:
-                    address_elem = page.locator(selector).first
-                    if address_elem.count() > 0:
-                        address_text = address_elem.inner_text() or address_elem.get_attribute("aria-label") or ""
-                        if address_text and len(address_text) > 5 and len(address_text) < 150:
-                            # Vérifier que c'est bien une adresse (contient un numéro et un nom de rue)
-                            if any(x in address_text for x in ['Rue', 'Avenue', 'Chemin', 'Route', 'Place', 'Boulevard']) or \
-                               (re.search(r'\d+', address_text) and ('Genève' in address_text or 'Suisse' in address_text)):
-                                result["Address"] = address_text.strip()
-                                break
-                except:
-                    continue
-            
-            # Fallback: chercher dans le contenu de la page avec BeautifulSoup
-            if not result["Address"]:
-                try:
-                    page_content = page.content()
-                    soup = BeautifulSoup(page_content, 'html.parser')
-                    # Chercher des patterns d'adresse suisse
-                    for elem in soup.find_all(['button', 'div', 'span', 'a']):
-                        text = elem.get_text().strip()
-                        # Pattern: "Rue Caroline 23, 1227 Genève, Suisse"
-                        if text and re.search(r'\d+.*(Rue|Avenue|Chemin|Route|Place|Boulevard)', text, re.IGNORECASE):
-                            if 'Genève' in text or 'Suisse' in text or re.search(r'\d{4}', text):  # Code postal
-                                if 10 < len(text) < 150:
-                                    result["Address"] = text.strip()
-                                    break
-                except:
-                    pass
-        except Exception as e:
+            page.wait_for_load_state("networkidle", timeout=15000)
+        except:
             pass
         
-        # 2. TÉLÉPHONE
-        try:
-            phone_selectors = [
-                'button[data-item-id*="phone"]',
-                '[data-item-id*="phone"]',
-                'button:has-text("+41")',
-                'a[href^="tel:"]',
-                'span:has-text("+41")'
-            ]
-            
-            for selector in phone_selectors:
-                try:
-                    phone_elem = page.locator(selector).first
-                    if phone_elem.count() > 0:
-                        phone_text = phone_elem.inner_text()
-                        # Extraire le numéro de téléphone
-                        phone_match = re.search(r'\+?41\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}', phone_text)
-                        if phone_match:
-                            result["Phone"] = phone_match.group(0).strip()
-                            break
-                        elif phone_text and ('+41' in phone_text or '022' in phone_text):
-                            # Nettoyer le texte
-                            phone_clean = re.sub(r'[^\d\+\s]', '', phone_text)
-                            if len(phone_clean) > 8:
-                                result["Phone"] = phone_clean.strip()
-                                break
-                except:
-                    continue
-        except Exception as e:
-            pass
+        random_delay(2, 3)
         
-        # 3. SITE WEB
+        # Extraire le texte visible de la page (plus fiable que le HTML minifié)
+        page_text = ""
         try:
-            website_selectors = [
-                'a[data-item-id="authority"]',
-                'a[href^="http"]:has-text("Site web")',
-                'a[href^="http"]:has-text("Website")',
-                'a[data-value="Website"]',
-                'a:has([aria-label*="Site web"])',
-                'a:has([aria-label*="Website"])'
-            ]
-            
-            for selector in website_selectors:
+            # Méthode 1: inner_text via locator
+            page_text = page.locator('body').inner_text(timeout=5000)
+        except:
+            try:
+                # Méthode 2: evaluate JavaScript
+                page_text = page.evaluate("document.body.innerText")
+            except:
                 try:
-                    website_link = page.locator(selector).first
-                    if website_link.count() > 0:
-                        href = website_link.get_attribute("href")
-                        if href and not any(x in href for x in ["google.com", "maps.google.com", "plus.google.com"]):
-                            if href.startswith("http"):
-                                result["Website"] = href
-                                break
+                    # Méthode 3: via BeautifulSoup
+                    html_content = page.content()
+                    soup = BeautifulSoup(html_content, 'html.parser')
+                    page_text = soup.get_text()
                 except:
-                    continue
-            
-            # Fallback: chercher tous les liens http/https qui ne sont pas Google
-            if not result["Website"]:
-                try:
-                    all_links = page.locator('a[href^="http"]').all()
-                    for link in all_links[:10]:  # Limiter pour performance
-                        href = link.get_attribute("href")
-                        if href and not any(x in href for x in ["google.com", "maps.google.com", "plus.google.com", "facebook.com", "twitter.com"]):
-                            result["Website"] = href
-                            break
-                except:
-                    pass
-        except Exception as e:
-            pass
+                    page_text = ""
         
-        # 4. NOTE GOOGLE (RATING)
-        try:
-            rating_selectors = [
-                'span[aria-label*="étoiles"]',
-                'span[aria-label*="stars"]',
-                'div[aria-label*="étoiles"]',
-                'div[aria-label*="stars"]',
-                '[data-value="Rating"]',
-                'span.F7nice',
-                'div.F7nice'
-            ]
-            
-            for selector in rating_selectors:
-                try:
-                    rating_elem = page.locator(selector).first
-                    if rating_elem.count() > 0:
-                        rating_text = rating_elem.get_attribute("aria-label") or rating_elem.inner_text()
-                        if rating_text:
-                            # Extraire le nombre (ex: "4.5" depuis "4,5 étoiles" ou "4.5 stars")
-                            rating_match = re.search(r'(\d+[.,]\d+|\d+)', rating_text.replace(',', '.'))
-                            if rating_match:
-                                result["Rating"] = rating_match.group(1).replace(',', '.')
-                                break
-                except:
-                    continue
-        except Exception as e:
-            pass
+        # Debug: sauvegarder le texte si vide ou pour debug
+        if not page_text or len(page_text) < 100:
+            print(f"    ⚠️  Texte de la page trop court ({len(page_text)} caractères), tentative alternative...")
+            try:
+                # Essayer d'attendre plus longtemps
+                page.wait_for_load_state("networkidle", timeout=20000)
+                random_delay(3, 5)
+                page_text = page.locator('body').inner_text(timeout=10000)
+            except:
+                pass
         
-        # 5. NOMBRE D'AVIS
-        try:
-            reviews_selectors = [
-                'button[data-value="Reviews"]',
-                'span:has-text("avis")',
-                'span:has-text("reviews")',
-                '[data-value="Reviews"]',
-                'div[aria-label*="avis"]',
-                'div[aria-label*="reviews"]'
-            ]
-            
-            for selector in reviews_selectors:
-                try:
-                    reviews_elem = page.locator(selector).first
-                    if reviews_elem.count() > 0:
-                        reviews_text = reviews_elem.inner_text() or reviews_elem.get_attribute("aria-label") or ""
-                        # Extraire le nombre
-                        reviews_match = re.search(r'(\d+[\s,.]?\d*)', reviews_text.replace(' ', '').replace(',', ''))
-                        if reviews_match:
-                            result["Reviews_Count"] = reviews_match.group(1)
-                            break
-                except:
-                    continue
-        except Exception as e:
-            pass
+        # Extraire aussi le HTML pour BeautifulSoup
+        html_content = page.content()
+        soup = BeautifulSoup(html_content, 'html.parser')
         
-        # 6. HORAIRES D'OUVERTURE
+        # Debug: vérifier que le texte contient des infos utiles
+        if page_text:
+            has_address = 'Rue' in page_text or 'Avenue' in page_text or 'Genève' in page_text
+            has_phone = '+41' in page_text or '022' in page_text
+            has_website = '.ch' in page_text or '.com' in page_text
+            if not (has_address or has_phone or has_website):
+                print(f"    ⚠️  Le texte extrait ne semble pas contenir les infos attendues")
+                print(f"    ℹ️  Longueur du texte: {len(page_text)} caractères")
+                print(f"    ℹ️  Premiers 200 caractères: {page_text[:200]}")
+        
+        # 1. ADRESSE COMPLÈTE - Basé sur le texte visible (plus fiable)
         try:
-            hours_selectors = [
-                'div[data-value="Hours"]',
-                'button[data-value="Hours"]',
-                '[data-item-id="hours"]',
-                'div:has-text("Ouvert")',
-                'div:has-text("Fermé")',
-                'div:has-text("lundi"), div:has-text("mardi"), div:has-text("mercredi")',
-                'div:has-text("monday"), div:has-text("tuesday"), div:has-text("wednesday")'
-            ]
-            
-            hours_text_parts = []
-            for selector in hours_selectors:
-                try:
-                    hours_elem = page.locator(selector).first
-                    if hours_elem.count() > 0:
-                        hours_text = hours_elem.inner_text()
-                        if hours_text and ('Ouvert' in hours_text or 'Fermé' in hours_text or 
-                                         'lundi' in hours_text.lower() or 'monday' in hours_text.lower() or
-                                         'mardi' in hours_text.lower() or 'tuesday' in hours_text.lower()):
-                            hours_text_parts.append(hours_text.strip())
-                except:
-                    continue
-            
-            # Si on a trouvé des horaires, les combiner intelligemment
-            if hours_text_parts:
-                # Prendre le texte le plus complet (le plus long généralement)
-                result["Opening_Hours"] = max(hours_text_parts, key=len)
+            if not page_text:
+                print(f"    ⚠️  Pas de texte à analyser pour l'adresse")
             else:
-                # Fallback: chercher dans le HTML avec BeautifulSoup
-                try:
-                    page_content = page.content()
-                    soup = BeautifulSoup(page_content, 'html.parser')
-                    days = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche',
-                           'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-                    
-                    hours_found = []
-                    for elem in soup.find_all(['div', 'span', 'button']):
-                        text = elem.get_text().strip()
-                        if any(day in text.lower() for day in days) and ('Ouvert' in text or 'Fermé' in text or 'Open' in text or 'Closed' in text):
-                            if len(text) < 500:  # Éviter les textes trop longs
-                                hours_found.append(text)
-                    
-                    if hours_found:
-                        # Prendre le premier ou combiner
-                        result["Opening_Hours"] = ' | '.join(hours_found[:7])  # Max 7 jours
-                except:
-                    pass
+                # Pattern observé dans maps_page_text.txt ligne 47: "Rue Caroline 23, 1227 Genève, Suisse"
+                address_patterns = [
+                    r'(?:Rue|Avenue|Chemin|Route|Place|Boulevard)\s+[A-Za-zÀ-ÿ\s\-]+\s+\d+[,\s]+\d{4}\s+Genève[,\s]+Suisse?',
+                    r'(?:Rue|Avenue|Chemin|Route|Place|Boulevard)\s+[A-Za-zÀ-ÿ\s\-]+\s+\d+[,\s]+\d{4}\s+Genève',
+                    r'\d+[,\s]+(?:Rue|Avenue|Chemin|Route|Place|Boulevard)\s+[A-Za-zÀ-ÿ\s\-]+[,\s]+\d{4}\s+Genève',
+                ]
+                
+                for pattern in address_patterns:
+                    match = re.search(pattern, page_text, re.IGNORECASE)
+                    if match:
+                        addr = match.group(0).strip()
+                        # Vérifier que c'est une vraie adresse (contient un code postal)
+                        if re.search(r'\d{4}', addr) and ('Genève' in addr or 'Suisse' in addr or 'Lausanne' in addr):
+                            result["Address"] = addr
+                            break
+                
+                # Fallback: chercher ligne par ligne dans le texte (MÉTHODE PRINCIPALE)
+                if not result["Address"]:
+                    lines = page_text.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        # Pattern simple: contient un type de rue + numéro + code postal + ville
+                        if (any(x in line for x in ['Rue', 'Avenue', 'Chemin', 'Route', 'Place', 'Boulevard']) and
+                            re.search(r'\d+', line) and  # Contient un numéro
+                            re.search(r'\d{4}', line) and  # Contient un code postal
+                            any(x in line for x in ['Genève', 'Lausanne', 'Suisse', 'Yverdon', 'Neuchâtel', 'Fribourg', 'Sion', 'Nyon'])):
+                            if 15 < len(line) < 150:
+                                result["Address"] = line
+                                break
+        except Exception as e:
+            print(f"    ⚠️  Erreur extraction adresse: {e}")
+        
+        # 2. TÉLÉPHONE - Pattern observé ligne 60: "+41 22 501 76 86"
+        try:
+            if page_text:
+                # Pattern suisse: +41 XX XXX XX XX
+                phone_patterns = [
+                    r'\+41\s\d{2}\s\d{3}\s\d{2}\s\d{2}',  # Avec espaces exacts: "+41 22 501 76 86"
+                    r'\+41\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}',  # Espaces optionnels
+                    r'0\d{2}\s\d{3}\s\d{2}\s\d{2}',  # Format local avec espaces
+                    r'0\d{2}\s?\d{3}\s?\d{2}\s?\d{2}',  # Format local espaces optionnels
+                ]
+                
+                for pattern in phone_patterns:
+                    match = re.search(pattern, page_text)
+                    if match:
+                        phone = match.group(0).strip()
+                        # Nettoyer les espaces multiples
+                        phone = re.sub(r'\s+', ' ', phone)
+                        result["Phone"] = phone
+                        break
+            
+            # Chercher dans les liens tel:
+            if not result["Phone"]:
+                for link in soup.find_all('a', href=True):
+                    href = link.get('href', '')
+                    if href.startswith('tel:'):
+                        phone = href.replace('tel:', '').strip()
+                        if '+41' in phone or phone.startswith('0'):
+                            result["Phone"] = phone
+                            break
+        except Exception as e:
+            pass
+        
+        # 3. SITE WEB - Pattern observé ligne 53: "creation-site-internet-suisse.ch"
+        try:
+            if page_text:
+                # Chercher les domaines dans le texte ligne par ligne (éviter les emails)
+                lines = page_text.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    # Ignorer les lignes qui contiennent @ (emails) ou qui sont trop courtes
+                    if '@' not in line and '.' in line and len(line) > 5:
+                        # Chercher un domaine valide (format: domaine.ch ou domaine.com)
+                        # Pattern plus simple et direct
+                        domain_match = re.search(r'([a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.(?:ch|com|net|org|fr|io|co)[a-zA-Z]*)', line)
+                        if domain_match:
+                            domain = domain_match.group(1)
+                            # Vérifier que ce n'est pas un domaine Google ou social
+                            if not any(x in domain.lower() for x in ['google', 'facebook', 'twitter', 'linkedin', 'instagram', 'youtube', 'maps']):
+                                result["Website"] = f"https://{domain}" if not domain.startswith('http') else domain
+                                break
+            
+            # Chercher dans les liens href (méthode principale)
+            if not result["Website"]:
+                for link in soup.find_all('a', href=True):
+                    href = link.get('href', '')
+                    if href.startswith('http') and not any(x in href.lower() for x in [
+                        "google.com", "maps.google.com", "plus.google.com", 
+                        "facebook.com", "twitter.com", "x.com", "linkedin.com",
+                        "instagram.com", "youtube.com"
+                    ]):
+                        result["Website"] = href
+                        break
+        except Exception as e:
+            pass
+        
+        # 4. NOTE GOOGLE (RATING) - Pattern observé ligne 28: "5,0"
+        try:
+            if page_text:
+                # Chercher un nombre avec virgule ou point (format suisse: "5,0" ou format US: "5.0")
+                # Format observé: "5,0" ou "5.0" souvent suivi de "(30)" pour les avis
+                rating_patterns = [
+                    r'(\d+[.,]\d+)\s*\(',  # "5,0 (" ou "5.0 ("
+                    r'^(\d+[.,]\d+)\s*$',   # Ligne complète avec juste la note
+                    r'(\d+[.,]\d+)\s*$',   # Fin de ligne
+                ]
+                
+                lines = page_text.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    # Chercher un pattern de note (nombre entre 0 et 5)
+                    for pattern in rating_patterns:
+                        match = re.search(pattern, line)
+                        if match:
+                            rating = match.group(1).replace(',', '.')
+                            try:
+                                rating_float = float(rating)
+                                if 0 <= rating_float <= 5:
+                                    result["Rating"] = rating
+                                    break
+                            except:
+                                pass
+                    if result["Rating"]:
+                        break
+        except Exception as e:
+            pass
+        
+        # 5. NOMBRE D'AVIS - Pattern observé ligne 29: "(30)" ou ligne 97: "30 avis"
+        try:
+            if page_text:
+                # Chercher "(30)" ou "30 avis" dans le texte
+                reviews_patterns = [
+                    r'\((\d+)\)',  # "(30)" - format le plus commun
+                    r'(\d+)\s+avis',  # "30 avis"
+                    r'(\d+)\s+reviews',  # "30 reviews"
+                ]
+                
+                for pattern in reviews_patterns:
+                    match = re.search(pattern, page_text, re.IGNORECASE)
+                    if match:
+                        reviews = match.group(1)
+                        if reviews.isdigit():
+                            result["Reviews_Count"] = reviews
+                            break
+                
+                # Chercher dans les lignes du texte (méthode alternative)
+                if not result["Reviews_Count"]:
+                    lines = page_text.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if 'avis' in line.lower() or 'review' in line.lower():
+                            reviews_match = re.search(r'(\d+)', line)
+                            if reviews_match:
+                                result["Reviews_Count"] = reviews_match.group(1)
+                                break
+        except Exception as e:
+            pass
+        
+        # 6. HORAIRES D'OUVERTURE - Pattern observé ligne 50: "Ouvert 24h/24"
+        try:
+            # Chercher "Ouvert" ou "Fermé" dans le texte
+            hours_patterns = [
+                r'Ouvert\s+24h/24',
+                r'Ouvert\s+\d{2}h\s*-\s*\d{2}h',
+                r'Fermé',
+            ]
+            
+            hours_found = []
+            
+            # Chercher dans les lignes du texte
+            lines = page_text.split('\n')
+            for line in lines:
+                line = line.strip()
+                if 'Ouvert' in line or 'Fermé' in line or '24h' in line:
+                    if 5 < len(line) < 100:
+                        hours_found.append(line)
+            
+            # Si on trouve "Ouvert 24h/24", c'est souvent la seule info
+            if hours_found:
+                # Prendre la première occurrence pertinente
+                for h in hours_found:
+                    if 'Ouvert' in h or 'Fermé' in h:
+                        result["Opening_Hours"] = h
+                        break
         except Exception as e:
             pass
             
@@ -738,6 +920,9 @@ def main():
     print("🚀 SCRAPER SUISSE ROMANDE - MODE GUÉRILLA")
     print("=" * 60)
     
+    # Initialiser la base de données
+    init_database()
+    
     # Charger les données existantes
     existing_df = load_intermediate_data()
     checkpoint = load_checkpoint()
@@ -825,10 +1010,7 @@ def main():
                     print("  ⚠️  Page fermée par événement")
                 page.on("close", on_close)
                 
-                print("\n" + "=" * 60)
-                print("📡 PHASE 1: HARVESTING GOOGLE MAPS")
-                print("=" * 60)
-                
+                # BOUCLE PRINCIPALE : Pour chaque combinaison ville/keyword, faire Harvesting → Enrichissement → Mining
                 for city in CITIES:
                     for keyword in KEYWORDS:
                         combo = f"{city}_{keyword}"
@@ -838,6 +1020,10 @@ def main():
                             print(f"⏭️  Déjà fait: {city} - {keyword}")
                             continue
                         
+                        print("\n" + "=" * 60)
+                        print(f"🔄 TRAITEMENT: {keyword} à {city}")
+                        print("=" * 60)
+                        
                         try:
                             # Vérifier que le navigateur est toujours ouvert
                             try:
@@ -846,11 +1032,11 @@ def main():
                                 print("  ❌ Navigateur fermé, impossible de continuer")
                                 raise Exception("Browser closed")
                             
-                            # Créer une nouvelle page pour chaque recherche pour éviter les problèmes de session
+                            # Créer une nouvelle page pour chaque recherche
                             try:
                                 if page:
                                     try:
-                                        _ = page.url  # Vérifier si la page est toujours ouverte
+                                        _ = page.url
                                     except:
                                         page = None
                             except:
@@ -870,19 +1056,137 @@ def main():
                                     )
                                     page = context.new_page()
                             
+                            # ===== PHASE 1: HARVESTING =====
+                            print(f"\n📡 PHASE 1: HARVESTING - {keyword} à {city}")
                             extracted = scrape_gmaps_urls(keyword, city, page, browser, context)
-                            all_data.extend(extracted)
                             
-                            # Sauvegarder après chaque combinaison
-                            if extracted:
-                                df_temp = pd.DataFrame(all_data)
-                                save_intermediate_data(df_temp)
+                            if not extracted:
+                                print(f"  ⚠️  Aucune entreprise trouvée pour {keyword} à {city}")
+                                completed_combos.append(combo)
+                                save_checkpoint(city, keyword, completed_combos)
+                                continue
+                            
+                            print(f"  ✅ {len(extracted)} entreprises trouvées")
+                            
+                            # Créer un DataFrame temporaire pour cette recherche
+                            df_search = pd.DataFrame(extracted)
+                            
+                            # ===== PHASE 2: ENRICHISSEMENT MAPS =====
+                            print(f"\n🌐 PHASE 2: ENRICHISSEMENT - {len(df_search)} entreprises")
+                            
+                            addresses = []
+                            phones = []
+                            websites = []
+                            ratings = []
+                            reviews_counts = []
+                            
+                            for idx, row in df_search.iterrows():
+                                try:
+                                    print(f"  🔍 {row['Company']} ({idx+1}/{len(df_search)})")
+                                    
+                                    # Vérifier que la page est toujours ouverte
+                                    try:
+                                        _ = page.url
+                                    except:
+                                        print("    ⚠️  Page fermée, recréation...")
+                                        page = context.new_page()
+                                    
+                                    details = enrich_maps_details(page, row.get('Maps_Link'))
+                                    
+                                    # Afficher ce qui a été trouvé
+                                    found_items = []
+                                    if details.get('Address'):
+                                        found_items.append(f"📍")
+                                    if details.get('Phone'):
+                                        found_items.append(f"📞")
+                                    if details.get('Website'):
+                                        found_items.append(f"🌐")
+                                    if details.get('Rating'):
+                                        found_items.append(f"⭐")
+                                    if details.get('Reviews_Count'):
+                                        found_items.append(f"💬")
+                                    
+                                    if found_items:
+                                        print(f"    ✅ Trouvé: {', '.join(found_items)}")
+                                    
+                                    addresses.append(details.get('Address'))
+                                    phones.append(details.get('Phone'))
+                                    websites.append(details.get('Website'))
+                                    ratings.append(details.get('Rating'))
+                                    reviews_counts.append(details.get('Reviews_Count'))
+                                    
+                                    random_delay(MIN_PAGE_DELAY, MAX_PAGE_DELAY)
+                                except Exception as e:
+                                    print(f"    ⚠️  Erreur: {e}")
+                                    addresses.append(None)
+                                    phones.append(None)
+                                    websites.append(None)
+                                    ratings.append(None)
+                                    reviews_counts.append(None)
+                            
+                            df_search['Address'] = addresses
+                            df_search['Phone'] = phones
+                            df_search['Website'] = websites
+                            df_search['Rating'] = ratings
+                            df_search['Reviews_Count'] = reviews_counts
+                            
+                            # ===== PHASE 3: MINING (Emails) =====
+                            print(f"\n⛏️  PHASE 3: MINING - {len(df_search)} entreprises")
+                            
+                            final_emails = []
+                            final_socials = []
+                            final_status = []
+                            
+                            for idx, row in df_search.iterrows():
+                                website = row.get('Website')
+                                
+                                if pd.notna(website) and website:
+                                    try:
+                                        print(f"  🔎 {row['Company']} ({idx+1}/{len(df_search)})")
+                                        emails, socials, status = enrich_company_data_playwright(page, website)
+                                        final_emails.append(emails)
+                                        final_socials.append(socials)
+                                        final_status.append(status)
+                                        random_delay(2, 4)
+                                    except Exception as e:
+                                        print(f"    ⚠️  Erreur: {e}")
+                                        final_emails.append(None)
+                                        final_socials.append(None)
+                                        final_status.append("Error")
+                                else:
+                                    final_emails.append(None)
+                                    final_socials.append(None)
+                                    final_status.append("No Website")
+                            
+                            df_search['Email'] = final_emails
+                            df_search['Social_Links'] = final_socials
+                            df_search['Status'] = final_status
+                            
+                            # Nettoyer et valider les emails
+                            print(f"\n🧹 Nettoyage et validation des emails...")
+                            df_search['Email'] = df_search['Email'].apply(clean_emails)
+                            valid_emails = df_search['Email'].notna().sum()
+                            print(f"   ✅ {valid_emails}/{len(df_search)} emails valides")
+                            
+                            # Ajouter au DataFrame global
+                            all_data.extend(df_search.to_dict('records'))
+                            
+                            # Sauvegarder après chaque combinaison complète
+                            df_all = pd.DataFrame(all_data)
+                            df_all = df_all.drop_duplicates(subset=['Company'], keep='first')
+                            save_intermediate_data(df_all)
+                            
+                            # Sauvegarder aussi dans la base de données
+                            save_to_database(df_all)
                             
                             completed_combos.append(combo)
                             save_checkpoint(city, keyword, completed_combos)
                             
-                            print(f"  ✅ {len(extracted)} entreprises ajoutées")
-                            random_delay(3, 6)  # Pause importante entre recherches
+                            print(f"\n✅ {city} - {keyword}: {len(df_search)} entreprises complètes sauvegardées")
+                            print(f"📊 Total global: {len(df_all)} entreprises uniques")
+                            
+                            random_delay(3, 6)  # Pause entre combinaisons
+                            
                         except Exception as e:
                             error_msg = str(e)
                             print(f"  ⚠️  Erreur sur {city} - {keyword}: {error_msg}")
@@ -892,114 +1196,17 @@ def main():
                                 print("  ❌ Navigateur fermé, arrêt du scraping")
                                 raise
                             
-                            # Continuer avec la prochaine combinaison pour les autres erreurs
+                            # Continuer avec la prochaine combinaison
                             continue
                 
-                # Nettoyer les doublons
+                # Nettoyer les doublons finaux
                 df = pd.DataFrame(all_data)
                 if not df.empty:
                     df = df.drop_duplicates(subset=['Company'], keep='first')
-                    print(f"\n📊 Total après nettoyage: {len(df)} entreprises uniques")
+                    print(f"\n📊 Total final après nettoyage: {len(df)} entreprises uniques")
                 else:
-                    print("\n⚠️  Aucune donnée récupérée. Vérifiez votre connexion et les sélecteurs.")
+                    print("\n⚠️  Aucune donnée récupérée.")
                     return
-                
-                # 2. ENRICHISSEMENT DES DONNÉES MAPS (Adresse, Téléphone, Site web, Note, Avis, Horaires)
-                print("\n" + "=" * 60)
-                print("🌐 PHASE 2: ENRICHISSEMENT DES FICHES MAPS")
-                print("=" * 60)
-                
-                addresses = []
-                phones = []
-                websites = []
-                ratings = []
-                reviews_counts = []
-                opening_hours = []
-                
-                for index, row in df.iterrows():
-                    # Vérifier si on a déjà les données
-                    has_data = (pd.notna(row.get('Address')) or pd.notna(row.get('Phone')) or 
-                               pd.notna(row.get('Website')) or pd.notna(row.get('Rating')))
-                    
-                    if not has_data:
-                        try:
-                            print(f"  🔍 {row['Company']} ({index+1}/{len(df)})")
-                            
-                            # Vérifier que la page est toujours ouverte
-                            try:
-                                _ = page.url
-                            except:
-                                print("    ⚠️  Page fermée, recréation...")
-                                page = context.new_page()
-                            
-                            details = enrich_maps_details(page, row.get('Maps_Link'))
-                            
-                            addresses.append(details.get('Address'))
-                            phones.append(details.get('Phone'))
-                            websites.append(details.get('Website'))
-                            ratings.append(details.get('Rating'))
-                            reviews_counts.append(details.get('Reviews_Count'))
-                            opening_hours.append(details.get('Opening_Hours'))
-                            
-                            random_delay(MIN_PAGE_DELAY, MAX_PAGE_DELAY)
-                        except Exception as e:
-                            print(f"    ⚠️  Erreur: {e}")
-                            addresses.append(row.get('Address') if 'Address' in row else None)
-                            phones.append(row.get('Phone') if 'Phone' in row else None)
-                            websites.append(row.get('Website') if 'Website' in row else None)
-                            ratings.append(row.get('Rating') if 'Rating' in row else None)
-                            reviews_counts.append(row.get('Reviews_Count') if 'Reviews_Count' in row else None)
-                            opening_hours.append(row.get('Opening_Hours') if 'Opening_Hours' in row else None)
-                    else:
-                        # Utiliser les données existantes
-                        addresses.append(row.get('Address'))
-                        phones.append(row.get('Phone'))
-                        websites.append(row.get('Website'))
-                        ratings.append(row.get('Rating'))
-                        reviews_counts.append(row.get('Reviews_Count'))
-                        opening_hours.append(row.get('Opening_Hours'))
-                
-                df['Address'] = addresses
-                df['Phone'] = phones
-                df['Website'] = websites
-                df['Rating'] = ratings
-                df['Reviews_Count'] = reviews_counts
-                df['Opening_Hours'] = opening_hours
-                save_intermediate_data(df)
-                
-                # 3. MINING (Emails et liens sociaux)
-                print("\n" + "=" * 60)
-                print("⛏️  PHASE 3: MINING (Emails & Réseaux sociaux)")
-                print("=" * 60)
-                
-                final_emails = []
-                final_socials = []
-                final_status = []
-                
-                for index, row in df.iterrows():
-                    website = row.get('Website')
-                    
-                    if pd.notna(website) and website:
-                        try:
-                            print(f"  🔎 Scraping: {row['Company']} ({index+1}/{len(df)})")
-                            emails, socials, status = enrich_company_data_playwright(page, website)
-                            final_emails.append(emails)
-                            final_socials.append(socials)
-                            final_status.append(status)
-                            random_delay(2, 4)  # Pause entre sites
-                        except Exception as e:
-                            print(f"    ⚠️  Erreur: {e}")
-                            final_emails.append(None)
-                            final_socials.append(None)
-                            final_status.append("Error")
-                    else:
-                        final_emails.append(None)
-                        final_socials.append(None)
-                        final_status.append("No Website")
-                
-                df['Email'] = final_emails
-                df['Social_Links'] = final_socials
-                df['Status'] = final_status
                 
                 # Sauvegarde finale
                 df.to_csv(OUTPUT_FILE, index=False)
@@ -1011,8 +1218,8 @@ def main():
                 print(f"🌐 Avec site web: {df['Website'].notna().sum()}")
                 print(f"⭐ Avec note: {df['Rating'].notna().sum()}")
                 print(f"💬 Avec avis: {df['Reviews_Count'].notna().sum()}")
-                print(f"🕐 Avec horaires: {df['Opening_Hours'].notna().sum()}")
-                print(f"📧 Avec email: {df['Email'].notna().sum()}")
+                print(f"📧 Avec email valide: {df['Email'].notna().sum()}")
+                print(f"💾 Base de données: {DATABASE_FILE}")
                 print("=" * 60)
                 
             except Exception as browser_error:

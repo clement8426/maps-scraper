@@ -1,200 +1,217 @@
 # 🚀 Scraper Google Maps - Suisse Romande (Mode Guérilla)
 
-Pipeline d'extraction et d'enrichissement de données d'entreprises tech en Suisse Romande **sans API payante**.
+Scraper automatisé pour extraire et enrichir les données d'entreprises tech depuis Google Maps, avec focus sur le **canton de Neuchâtel** et la Suisse Romande.
 
-## ⚠️ Avertissements Importants
+## 🎯 Fonctionnalités
 
-**Ce script est fourni à des fins éducatives et de recherche uniquement.**
+### Phase 1: Harvesting (Récolte)
+- Recherche automatisée sur Google Maps
+- Extraction des noms et liens Maps
+- Gestion automatique des cookies
 
-- ⚠️ **Respectez les conditions d'utilisation de Google Maps**
-- ⚠️ **Respectez le `robots.txt` des sites web visités**
-- ⚠️ **Ne surchargez pas les serveurs** (délais intégrés)
-- ⚠️ **Vérifiez la légalité** de l'utilisation dans votre juridiction
-- ⚠️ **Les emails récupérés** doivent respecter le RGPD et les lois anti-spam
+### Phase 2: Enrichissement
+- **Adresse complète**
+- **Téléphone**
+- **Site web**
+- **Note Google** (étoiles)
+- **Nombre d'avis**
 
-## 📋 Prérequis
+### Phase 3: Mining (Fouille)
+- **Extraction d'emails** depuis les sites web
+- **Validation DNS** des emails (suppression des emails fictifs)
+- **Liens réseaux sociaux** (LinkedIn, Facebook, Twitter, Instagram)
 
-- Python 3.8+
-- Navigateur Chromium (installé via Playwright)
+### Bonus
+- **Base de données SQLite** (`companies.db`)
+- **Sauvegarde incrémentale** (reprend après interruption)
+- **Anti-détection** avancé (user-agents rotatifs, delays aléatoires)
+
+## 📍 Zones géographiques couvertes
+
+### Priorité: Canton de Neuchâtel
+- Neuchâtel
+- La Chaux-de-Fonds
+- Le Locle
+- Val-de-Ruz
+- Val-de-Travers
+- Fleurier
+- Cernier
+- Peseux
+- Colombier
+- Marin-Epagnier
+- Saint-Blaise
+- Boudry
+- Cressier
+
+### Villes proches (hors canton)
+- Yverdon-les-Bains
+- Pontarlier
+- Morteau
+- Besançon
+
+### Autres villes Suisse Romande
+- Genève, Lausanne, Fribourg, Sion, Nyon, Renens, Meyrin, Vevey, Montreux, Delémont, Porrentruy
+
+## 🔍 Mots-clés recherchés
+
+**40+ mots-clés** couvrant:
+- Développement web & digital (Agence Web, Web design, UX Designer, etc.)
+- Développement spécialisé (Full Stack, Frontend, Backend, Mobile app, E-commerce)
+- Software & SaaS (Startup tech, SaaS company, Scale-up)
+- Sécurité & infrastructure (Cybersécurité, Cloud provider, DevOps)
+- Marketing digital (SEO, Marketing digital, Social media)
+- Data & IA (Data science, Machine Learning, Big Data)
 
 ## 🛠️ Installation
 
+### 1. Prérequis
 ```bash
-# Installer les dépendances Python
-pip install -r requirements.txt
-
-# Installer les navigateurs Playwright (Firefox recommandé)
-playwright install firefox
-# OU pour Chromium
-playwright install chromium
-
-# Tester que Playwright fonctionne
-python test_playwright.py
-
-# Tester avec Google Maps (Firefox recommandé)
-python test_firefox.py
+Python 3.8+
 ```
 
-**⚠️ Note importante :**
-- **Firefox est recommandé** car il semble mieux fonctionner avec Google Maps
-- Le script utilise Firefox par défaut (configurable dans `scraper_suisse_romande.py`)
-- Google Maps peut rediriger vers une page de consentement - le script la gère automatiquement
+### 2. Installation des dépendances
+```bash
+pip install -r requirements.txt
+```
 
-## 🎯 Architecture
+### 3. Installation de Playwright
+```bash
+# Firefox (recommandé)
+playwright install firefox
 
-Le système se compose de 3 phases :
-
-1. **Harvester (Moissonneur)** : Parcourt Google Maps par secteurs géographiques
-2. **Enricher (Enrichisseur)** : Récupère les sites web depuis les fiches Maps
-3. **Miner (Mineur)** : Visite les sites web pour extraire emails et liens sociaux
+# Ou Chromium
+playwright install chromium
+```
 
 ## 🚀 Utilisation
 
-### Étape 1 : Lancer le scraper principal
-
+### Lancement simple
 ```bash
 python scraper_suisse_romande.py
 ```
 
-**Fonctionnalités :**
-- ✅ Sauvegarde incrémentale (peut être interrompu et relancé)
-- ✅ Gestion des sites React/SPA avec Playwright
-- ✅ Délais aléatoires pour simuler un comportement humain
-- ✅ Rotation des User-Agents
-- ✅ Gestion des erreurs et timeouts
+Le script va :
+1. Créer/ouvrir la base de données SQLite `companies.db`
+2. Pour chaque combinaison ville × mot-clé :
+   - Rechercher sur Google Maps
+   - Enrichir les fiches (adresse, téléphone, site, note, avis)
+   - Extraire les emails depuis les sites web
+   - **Valider les emails** (DNS MX records)
+   - Sauvegarder dans CSV + SQLite
 
-**Fichiers générés :**
-- `base_tech_suisse.csv` : Résultat final
-- `intermediate_data.csv` : Sauvegarde intermédiaire (supprimé à la fin)
-- `checkpoint.json` : Checkpoint pour reprendre (supprimé à la fin)
-
-### Étape 2 : Vérifier les emails (Optionnel mais recommandé)
-
-Avant d'envoyer des emails marketing, vérifiez que les domaines sont valides :
-
+### Reprise après interruption
+Le script sauvegarde automatiquement sa progression dans `checkpoint.json`. En cas d'interruption (Ctrl+C, crash), relancez simplement :
 ```bash
-python verify_emails.py base_tech_suisse.csv
+python scraper_suisse_romande.py
+```
+Il reprendra là où il s'était arrêté.
+
+### Repartir de zéro
+```bash
+rm checkpoint.json intermediate_data.csv companies.db
+python scraper_suisse_romande.py
 ```
 
-Cela ajoute une colonne `Email_Valid` au CSV.
+## 📂 Fichiers générés
 
-### Étape 3 : Nettoyer et enrichir les données
+- **`base_tech_suisse.csv`** : Fichier final avec toutes les données
+- **`intermediate_data.csv`** : Données intermédiaires (sauvegarde automatique)
+- **`companies.db`** : Base de données SQLite
+- **`checkpoint.json`** : Point de reprise
 
-```bash
-python clean_and_deduce_emails.py base_tech_suisse.csv
+## 🗄️ Base de données SQLite
+
+La base `companies.db` contient une table `companies` avec tous les champs :
+```sql
+SELECT * FROM companies WHERE city = 'Neuchâtel' AND email IS NOT NULL;
 ```
 
-**Fonctionnalités :**
-- Nettoie les URLs et extrait les domaines
-- Identifie les emails génériques (info@, contact@, etc.)
-- Déduit des emails possibles à partir des noms d'entreprises
-- Filtre les lignes incomplètes
+Requête exemple pour exporter :
+```bash
+sqlite3 companies.db ".mode csv" ".output neuchatel_companies.csv" \
+  "SELECT * FROM companies WHERE city = 'Neuchâtel' ORDER BY rating DESC;"
+```
 
-## 📊 Structure des Données
+## ✅ Validation des emails
 
-Le CSV final contient :
+Le script **valide automatiquement** tous les emails extraits :
+1. Format valide (regex)
+2. Domaine valide
+3. **DNS MX records** (vérification que le serveur mail existe)
+4. Suppression des emails génériques/fictifs (noreply@, test@, etc.)
 
-| Colonne | Description |
-|---------|-------------|
-| `Company` | Nom de l'entreprise |
-| `Maps_Link` | Lien vers la fiche Google Maps |
-| `City` | Ville |
-| `Tag` | Mot-clé de recherche utilisé |
-| `Website` | Site web de l'entreprise |
-| `Email` | Emails trouvés (peut être multiple, séparés par virgule) |
-| `Social_Links` | Liens vers réseaux sociaux |
-| `Status` | Statut du scraping |
+Seuls les emails **validés** sont sauvegardés.
 
 ## ⚙️ Configuration
 
 Modifiez les constantes dans `scraper_suisse_romande.py` :
 
 ```python
-CITIES = ["Genève", "Lausanne", ...]  # Villes à scraper
-KEYWORDS = ["Agence Web", ...]         # Mots-clés de recherche
-MIN_DELAY = 1.5                        # Délai minimum entre actions
-MAX_DELAY = 4.0                        # Délai maximum entre actions
+# Navigateur : "firefox" (recommandé) ou "chromium"
+BROWSER_TYPE = "firefox"
+
+# Délais pour simuler un humain
+MIN_DELAY = 1.5
+MAX_DELAY = 4.0
+
+# Ajouter/retirer des villes
+CITIES = [...]
+
+# Ajouter/retirer des mots-clés
+KEYWORDS = [...]
 ```
 
-## 🛡️ Protection Anti-Ban
+## 🛡️ Anti-détection
 
-Le script inclut plusieurs mécanismes pour éviter les blocages :
+- **11 User-Agents différents** (Chrome, Firefox, Safari, Edge)
+- Rotation automatique à chaque recherche
+- Délais aléatoires entre actions
+- Navigation naturelle (Google.com → Google Maps)
+- Gestion automatique des cookies
+- Masquage des signaux d'automatisation
 
-- ✅ Délais aléatoires entre chaque action
-- ✅ Rotation des User-Agents
-- ✅ Simulation d'un comportement humain (scroll, pauses)
-- ✅ Gestion des cookies Google
-- ✅ Timeouts adaptatifs
+## ⚠️ Avertissements
 
-**Si vous êtes bloqué :**
-- Augmentez les délais (`MIN_DELAY`, `MAX_DELAY`)
-- Utilisez un VPN ou changez d'IP
-- Réduisez le nombre de villes/mots-clés par session
+1. **Légalité** : Ce script est à usage personnel/éducatif. Assurez-vous de respecter les CGU de Google et la législation sur la protection des données (RGPD, LPD suisse).
+2. **Rate limiting** : Le script intègre des délais pour éviter le blocage, mais Google peut quand même bloquer en cas d'usage intensif.
+3. **Données publiques** : Seules les données publiques accessibles sur Google Maps sont extraites.
+
+## 📊 Statistiques
+
+Avec la configuration actuelle :
+- **25 villes** × **40 mots-clés** = **1000 recherches possibles**
+- Environ **10-50 entreprises par recherche**
+- Durée estimée : **8-12 heures** (avec tous les mots-clés et villes)
 
 ## 🐛 Dépannage
 
-### Le navigateur plante (SEGV_MAPERR, segmentation fault)
+### Le navigateur crash
+- Essayez Firefox au lieu de Chromium : `BROWSER_TYPE = "firefox"`
+- Installez Firefox : `playwright install firefox`
 
-- Problème connu avec certaines versions de Playwright/Chromium sur macOS
-- **Solutions** :
-  1. Le script utilise Firefox par défaut maintenant (meilleure compatibilité)
-  2. Le script utilise `headless=True` par défaut (évite les problèmes d'affichage)
-  3. Si vous voulez utiliser Chromium : modifiez `BROWSER_TYPE = "chromium"` dans le script
-  4. Réinstallez Playwright si nécessaire : `playwright install firefox --force`
+### Timeout lors de l'enrichissement
+- Certains sites sont lents ou bloquent les scrapers
+- Les erreurs sont gérées automatiquement (le script continue)
 
-### Page de consentement Google
+### Aucun email trouvé
+- Beaucoup de sites n'affichent pas d'emails
+- Certains utilisent des formulaires de contact uniquement
+- Les emails trouvés sont validés (DNS), donc certains sont rejetés
 
-- Google Maps peut rediriger vers `consent.google.com`
-- **Solution** : Le script gère automatiquement cette page en acceptant les cookies/conditions
-- Si le problème persiste, essayez de visiter Google Maps manuellement dans un navigateur pour accepter les conditions une fois
+### Base de données corrompue
+```bash
+rm companies.db
+python scraper_suisse_romande.py
+```
 
-### Le script plante après quelques résultats
+## 📝 Licence
 
-- Google a peut-être détecté le bot
-- **Solution** : Augmentez les délais (`MIN_DELAY`, `MAX_DELAY`), réduisez le nombre de recherches par session
-
-### Pas d'emails trouvés sur les sites
-
-- Certains sites sont en React/Vue.js et nécessitent JavaScript
-- **Solution** : Le script utilise déjà Playwright pour gérer cela, mais certains sites peuvent avoir des protections anti-bot
-
-### Erreur "Timeout" fréquente
-
-- Connexion lente ou site bloquant
-- **Solution** : Augmentez les timeouts dans le code ou vérifiez votre connexion
-
-### Erreur "Target page, context or browser has been closed"
-
-- Le navigateur a planté ou a été fermé
-- **Solution** : Le script sauvegarde automatiquement les données récupérées. Relancez-le, il reprendra où il s'est arrêté grâce aux checkpoints
-
-## 📝 Notes Importantes
-
-1. **Emails génériques** : La plupart des emails trouvés seront génériques (`info@`, `contact@`). Pour des emails personnels, il faudra :
-   - Rechercher manuellement sur LinkedIn
-   - Utiliser des outils de déduction d'email (comme le script `clean_and_deduce_emails.py`)
-
-2. **Faux positifs** : Certains résultats peuvent ne pas être des entreprises tech (ex: boutiques de réparation). Un tri manuel peut être nécessaire.
-
-3. **Limites Google Maps** : Google Maps limite à ~120 résultats par recherche. Le script utilise le scroll infini pour maximiser les résultats.
-
-## 🔒 Sécurité et Conformité
-
-- ✅ Vérifiez toujours les emails avec `verify_emails.py` avant envoi
-- ✅ Respectez le RGPD pour les emails marketing
-- ✅ Utilisez un service d'email transactionnel avec bonne réputation
-- ✅ Ne spammez pas : limitez le nombre d'emails par jour
-
-## 📄 Licence
-
-Ce code est fourni "tel quel" sans garantie. Utilisez-le à vos propres risques.
+Ce projet est fourni à des fins éducatives. Utilisez-le de manière responsable.
 
 ## 🤝 Contribution
 
-Améliorations suggérées :
-- Gestion des CAPTCHAs
-- Support de proxies rotatifs
-- Export vers d'autres formats (JSON, SQLite)
-- Interface web pour monitoring
+Pour ajouter des villes ou mots-clés, modifiez directement les listes `CITIES` et `KEYWORDS` dans le fichier principal.
 
-# maps-scraper
+---
+
+**Bon scraping ! 🕷️**
