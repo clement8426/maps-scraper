@@ -7,23 +7,17 @@
 
 ---
 
-## ⚡ Quick Start
-
-### Sur VPS (Recommandé)
+## ⚡ Quick Start (VPS Ubuntu/Debian)
 
 ```bash
-# 1. Cloner le projet
-git clone https://github.com/VOTRE_USERNAME/maps-scrap.git
-cd maps-scrap
-
-# 2. Installer (tout automatique)
+# Cloner + installer (tout automatique)
+git clone https://github.com/clement8426/maps-scraper.git
+cd maps-scraper
 sudo ./scripts/install.sh
-
-# 3. Ouvrir l'interface web
-# URL affichée en fin d'installation
 ```
 
-**⏱️ Temps : 5-10 minutes**
+**⏱️ Temps : 5-10 minutes**  
+L'URL et les identifiants sont affichés en fin d'installation.
 
 ### En local (Développement)
 

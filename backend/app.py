@@ -143,21 +143,10 @@ def get_cities():
 @auth.login_required
 def scraper_status():
     """Récupère le statut du scraper"""
-    global scraper_process, scraper_running
-    
-    # Vérifier si le processus est vraiment en cours
+    # Ne pas utiliser les variables globales (problème multi-workers Gunicorn)
+    # Vérifier directement avec ps si le processus tourne
     process_running = False
     
-    # Vérifier d'abord le processus Python si on en a un
-    if scraper_process:
-        if scraper_process.poll() is None:
-            process_running = True
-        else:
-            # Le processus est terminé
-            scraper_running = False
-            scraper_process = None
-    
-    # Vérifier aussi avec ps pour être sûr
     try:
         result = subprocess.run(
             ['ps', 'aux'],
@@ -165,15 +154,13 @@ def scraper_status():
             text=True,
             timeout=2
         )
-        if 'scraper_suisse_romande.py' in result.stdout:
-            process_running = True
-            scraper_running = True
+        # Chercher le processus scraper (mais pas grep lui-même)
+        for line in result.stdout.split('\n'):
+            if 'scraper_suisse_romande.py' in line and 'grep' not in line:
+                process_running = True
+                break
     except:
         pass
-    
-    # Si le processus n'est plus en cours, mettre à jour le flag
-    if not process_running:
-        scraper_running = False
     
     # Lire le checkpoint
     checkpoint = {}
@@ -185,7 +172,7 @@ def scraper_status():
             pass
     
     return jsonify({
-        "running": scraper_running,
+        "running": process_running,
         "last_city": checkpoint.get("last_city"),
         "last_keyword": checkpoint.get("last_keyword"),
         "completed_combinations": len(checkpoint.get("completed_combinations", [])),
