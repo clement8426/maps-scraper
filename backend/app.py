@@ -203,36 +203,51 @@ def start_scraper():
     
     try:
         # Utiliser le Python du venv si disponible, sinon python3
-        venv_python = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'venv', 'bin', 'python')
+        backend_dir = os.path.dirname(__file__)
+        app_dir = os.path.dirname(backend_dir)
+        venv_python = os.path.join(app_dir, 'venv', 'bin', 'python')
+        
         if os.path.exists(venv_python):
             python_cmd = venv_python
         else:
             python_cmd = 'python3'
         
+        scraper_script = os.path.join(backend_dir, 'scraper_suisse_romande.py')
+        if not os.path.exists(scraper_script):
+            return jsonify({"error": f"Fichier scraper non trouvé: {scraper_script}"}), 500
+        
+        # Lancer le scraper en arrière-plan avec nohup pour qu'il continue même si la connexion se ferme
         scraper_process = subprocess.Popen(
-            [python_cmd, 'scraper_suisse_romande.py'],
-            cwd=os.path.dirname(__file__),
+            [python_cmd, scraper_script],
+            cwd=backend_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=os.environ.copy()
+            env=os.environ.copy(),
+            start_new_session=True  # Détacher du groupe de processus
         )
         scraper_running = True
         
         # Vérifier immédiatement si le processus a crashé
         import time
-        time.sleep(0.5)
+        time.sleep(1)
         if scraper_process.poll() is not None:
             # Le processus s'est terminé immédiatement (erreur)
-            stderr_output = scraper_process.stderr.read() if scraper_process.stderr else "Aucune erreur capturée"
+            try:
+                stdout_output, stderr_output = scraper_process.communicate(timeout=1)
+                error_msg = stderr_output if stderr_output else stdout_output
+            except:
+                error_msg = "Impossible de lire l'erreur"
+            
             scraper_running = False
             scraper_process = None
-            return jsonify({"error": f"Le scraper s'est arrêté immédiatement. Erreur: {stderr_output}"}), 500
+            return jsonify({"error": f"Le scraper s'est arrêté immédiatement. Erreur: {error_msg[:500]}"}), 500
         
         return jsonify({"message": "Scraper démarré"})
     except Exception as e:
         scraper_running = False
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        return jsonify({"error": f"{str(e)}\n{traceback.format_exc()}"}), 500
 
 @app.route('/api/scraper/stop', methods=['POST'])
 @auth.login_required
