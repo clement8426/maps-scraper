@@ -35,7 +35,8 @@ apt-get upgrade -y -qq
 
 # 2. Installation des dépendances système (pour compilation Python)
 echo "🔧 Installation des dépendances système..."
-apt-get install -y pkg-config libatlas-base-dev libblas-dev liblapack-dev gfortran python3-dev -qq
+apt-get install -y pkg-config libatlas-base-dev libblas-dev liblapack-dev gfortran python3-dev \
+    libxml2-dev libxslt1-dev zlib1g-dev -qq
 
 # 3. Installation de Python 3 et pip
 echo "🐍 Installation de Python 3 et pip..."
