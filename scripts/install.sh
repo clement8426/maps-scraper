@@ -33,11 +33,15 @@ echo "📦 Mise à jour du système..."
 apt-get update -qq
 apt-get upgrade -y -qq
 
-# 2. Installation de Python 3 et pip
+# 2. Installation des dépendances système (pour compilation Python)
+echo "🔧 Installation des dépendances système..."
+apt-get install -y pkg-config libatlas-base-dev libblas-dev liblapack-dev gfortran python3-dev -qq
+
+# 3. Installation de Python 3 et pip
 echo "🐍 Installation de Python 3 et pip..."
 apt-get install -y python3 python3-pip python3-venv -qq
 
-# 3. Installation de Node.js (pour certaines dépendances)
+# 4. Installation de Node.js (pour certaines dépendances)
 echo "📦 Installation de Node.js..."
 apt-get install -y curl -qq
 if ! command -v node &> /dev/null; then
@@ -45,21 +49,21 @@ if ! command -v node &> /dev/null; then
     apt-get install -y nodejs -qq
 fi
 
-# 4. Installation de Nginx
+# 5. Installation de Nginx
 echo "🌐 Installation de Nginx..."
 apt-get install -y nginx -qq
 
-# 5. Installation de ufw (firewall)
+# 6. Installation de ufw (firewall)
 echo "🔥 Installation du firewall..."
 apt-get install -y ufw -qq
 
-# 6. Créer un utilisateur pour l'application (si n'existe pas)
+# 7. Créer un utilisateur pour l'application (si n'existe pas)
 if ! id "scraper" &>/dev/null; then
     echo "👤 Création de l'utilisateur 'scraper'..."
     useradd -m -s /bin/bash scraper
 fi
 
-# 7. Définir le répertoire de travail
+# 8. Définir le répertoire de travail
 APP_DIR="/home/scraper/maps-scraper"
 echo "📁 Répertoire de l'application: $APP_DIR"
 
@@ -73,23 +77,23 @@ fi
 
 cd $APP_DIR
 
-# 8. Créer l'environnement virtuel Python
+# 9. Créer l'environnement virtuel Python
 echo "🐍 Création de l'environnement virtuel..."
 python3 -m venv venv
 source venv/bin/activate
 
-# 9. Installer les dépendances Python
+# 10. Installer les dépendances Python
 echo "📦 Installation des dépendances Python..."
 pip install --upgrade pip -qq
 pip install -r requirements.txt -qq
 pip install flask flask-httpauth gunicorn -qq
 
-# 10. Installer Playwright et Firefox
+# 11. Installer Playwright et Firefox
 echo "🎭 Installation de Playwright et Firefox..."
 playwright install firefox
 playwright install-deps firefox
 
-# 11. Configuration des variables d'environnement
+# 12. Configuration des variables d'environnement
 if [ ! -f .env ]; then
     echo "⚙️ Configuration des variables d'environnement..."
     read -p "Nom d'utilisateur pour l'interface web (défaut: admin): " web_username
@@ -114,12 +118,12 @@ EOF
     echo -e "${GREEN}✅ Fichier .env créé${NC}"
 fi
 
-# 12. Changer les permissions
+# 13. Changer les permissions
 echo "🔒 Configuration des permissions..."
 chown -R scraper:scraper $APP_DIR
 chmod +x scripts/*.sh
 
-# 13. Configuration de Nginx
+# 14. Configuration de Nginx
 echo "🌐 Configuration de Nginx..."
 cat > /etc/nginx/sites-available/scraper << 'EOF'
 server {
@@ -156,7 +160,7 @@ ln -sf /etc/nginx/sites-available/scraper /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl restart nginx
 
-# 14. Créer un service systemd
+# 15. Créer un service systemd
 echo "⚙️ Création du service systemd..."
 cat > /etc/systemd/system/scraper-web.service << EOF
 [Unit]
@@ -181,7 +185,7 @@ systemctl daemon-reload
 systemctl enable scraper-web
 systemctl start scraper-web
 
-# 15. Configuration du firewall
+# 16. Configuration du firewall
 echo "🔥 Configuration du firewall..."
 ufw --force enable
 ufw allow 22/tcp      # SSH
@@ -189,7 +193,7 @@ ufw allow 80/tcp      # HTTP
 ufw allow 443/tcp     # HTTPS (si SSL plus tard)
 ufw status
 
-# 16. Afficher les informations de connexion
+# 17. Afficher les informations de connexion
 echo ""
 echo "============================================"
 echo -e "${GREEN}✅ Installation terminée !${NC}"
