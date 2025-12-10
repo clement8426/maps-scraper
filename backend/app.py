@@ -149,18 +149,29 @@ def scraper_status():
     
     try:
         result = subprocess.run(
-            ['ps', 'aux'],
+            ['pgrep', '-f', 'scraper_suisse_romande.py'],
             capture_output=True,
             text=True,
             timeout=2
         )
-        # Chercher le processus scraper (mais pas grep lui-même)
-        for line in result.stdout.split('\n'):
-            if 'scraper_suisse_romande.py' in line and 'grep' not in line:
-                process_running = True
-                break
+        # pgrep retourne les PIDs si trouvé, vide sinon
+        if result.returncode == 0 and result.stdout.strip():
+            process_running = True
     except:
-        pass
+        # Fallback sur ps aux si pgrep échoue
+        try:
+            result = subprocess.run(
+                ['ps', 'aux'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            for line in result.stdout.split('\n'):
+                if 'scraper_suisse_romande.py' in line and 'grep' not in line:
+                    process_running = True
+                    break
+        except:
+            pass
     
     # Lire le checkpoint
     checkpoint = {}
