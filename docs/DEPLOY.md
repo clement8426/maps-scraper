@@ -13,17 +13,22 @@ Guide complet pour déployer le scraper sur un VPS avec interface web accessible
 
 ### 1️⃣ Cloner le repository sur le VPS
 
+**Tu peux cloner le projet n'importe où !** Le script d'installation va automatiquement copier les fichiers vers `/home/scraper/maps-scraper`.
+
 ```bash
-# Connexion SSH au VPS
-ssh root@VOTRE_IP_VPS
+# Connexion SSH au VPS (en tant que ubuntu ou root)
+ssh ubuntu@VOTRE_IP_VPS
 
 # Installation de git si nécessaire
-apt-get update && apt-get install -y git
+sudo apt-get update && sudo apt-get install -y git
 
-# Cloner le projet
-cd /root
+# Cloner le projet (n'importe où, par exemple dans /home/ubuntu)
+cd ~
 git clone https://github.com/VOTRE_USERNAME/maps-scrap.git
 cd maps-scrap
+
+# OU cloner dans /tmp, /opt, etc. - peu importe !
+# Le script install.sh va copier vers /home/scraper/maps-scraper automatiquement
 ```
 
 ### 2️⃣ Lancer l'installation automatique

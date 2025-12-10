@@ -79,8 +79,17 @@ cd $APP_DIR
 
 # 9. Créer l'environnement virtuel Python
 echo "🐍 Création de l'environnement virtuel..."
-python3 -m venv venv
-source venv/bin/activate
+if [ -d "$APP_DIR/venv" ]; then
+    echo -e "${YELLOW}⚠️  Le venv existe déjà, suppression...${NC}"
+    rm -rf "$APP_DIR/venv"
+fi
+python3 -m venv "$APP_DIR/venv"
+if [ ! -d "$APP_DIR/venv" ]; then
+    echo -e "${RED}❌ Erreur lors de la création du venv !${NC}"
+    exit 1
+fi
+source "$APP_DIR/venv/bin/activate"
+echo -e "${GREEN}✅ Environnement virtuel créé dans $APP_DIR/venv${NC}"
 
 # 10. Installer les dépendances Python
 echo "📦 Installation des dépendances Python..."
