@@ -146,11 +146,34 @@ def scraper_status():
     global scraper_process, scraper_running
     
     # Vérifier si le processus est vraiment en cours
+    process_running = False
+    
+    # Vérifier d'abord le processus Python si on en a un
     if scraper_process:
-        if scraper_process.poll() is not None:
+        if scraper_process.poll() is None:
+            process_running = True
+        else:
             # Le processus est terminé
             scraper_running = False
             scraper_process = None
+    
+    # Vérifier aussi avec ps pour être sûr
+    try:
+        result = subprocess.run(
+            ['ps', 'aux'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if 'scraper_suisse_romande.py' in result.stdout:
+            process_running = True
+            scraper_running = True
+    except:
+        pass
+    
+    # Si le processus n'est plus en cours, mettre à jour le flag
+    if not process_running:
+        scraper_running = False
     
     # Lire le checkpoint
     checkpoint = {}
@@ -179,14 +202,33 @@ def start_scraper():
         return jsonify({"error": "Le scraper est déjà en cours"}), 400
     
     try:
+        # Utiliser le Python du venv si disponible, sinon python3
+        venv_python = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'venv', 'bin', 'python')
+        if os.path.exists(venv_python):
+            python_cmd = venv_python
+        else:
+            python_cmd = 'python3'
+        
         scraper_process = subprocess.Popen(
-            ['python3', 'scraper_suisse_romande.py'],
+            [python_cmd, 'scraper_suisse_romande.py'],
             cwd=os.path.dirname(__file__),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            env=os.environ.copy()
         )
         scraper_running = True
+        
+        # Vérifier immédiatement si le processus a crashé
+        import time
+        time.sleep(0.5)
+        if scraper_process.poll() is not None:
+            # Le processus s'est terminé immédiatement (erreur)
+            stderr_output = scraper_process.stderr.read() if scraper_process.stderr else "Aucune erreur capturée"
+            scraper_running = False
+            scraper_process = None
+            return jsonify({"error": f"Le scraper s'est arrêté immédiatement. Erreur: {stderr_output}"}), 500
+        
         return jsonify({"message": "Scraper démarré"})
     except Exception as e:
         scraper_running = False

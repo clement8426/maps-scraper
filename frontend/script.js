@@ -191,8 +191,15 @@ function exportCsv() {
 // Scraper
 async function loadScraperStatus() {
     try {
-        const response = await fetch('/api/scraper/status');
+        const response = await fetch('/api/scraper/status', {
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            console.error('Erreur HTTP:', response.status);
+            return;
+        }
         const status = await response.json();
+        console.log('Statut scraper:', status);
         
         const statusBadge = document.getElementById('scraperStatus');
         const progress = document.getElementById('scraperProgress');
@@ -238,13 +245,17 @@ async function startScraper() {
         
         if (response.ok) {
             alert('✅ Scraper démarré !');
-            loadScraperStatus();
+            // Attendre un peu avant de vérifier le statut
+            setTimeout(() => {
+                loadScraperStatus();
+            }, 1000);
             setTimeout(() => {
                 loadStats();
                 loadCompanies();
             }, 2000);
         } else {
             alert('❌ Erreur: ' + result.error);
+            loadScraperStatus(); // Recharger le statut même en cas d'erreur
         }
     } catch (error) {
         console.error('Erreur:', error);
