@@ -149,7 +149,7 @@ def scraper_status():
     
     try:
         result = subprocess.run(
-            ['pgrep', '-f', 'scraper_suisse_romande.py'],
+            ['/usr/bin/pgrep', '-f', 'scraper_suisse_romande.py'],
             capture_output=True,
             text=True,
             timeout=2
@@ -165,7 +165,7 @@ def scraper_status():
         # Fallback sur ps aux si pgrep échoue
         try:
             result = subprocess.run(
-                ['ps', 'aux'],
+                ['/usr/bin/ps', 'aux'],
                 capture_output=True,
                 text=True,
                 timeout=2
