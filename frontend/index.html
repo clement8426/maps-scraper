@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraper Google Maps - Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🕷️ Scraper Google Maps - Suisse Romande</h1>
+            <div class="header-actions">
+                <button id="refreshBtn" class="btn btn-secondary">🔄 Actualiser</button>
+                <button id="logoutBtn" class="btn btn-danger">🚪 Déconnexion</button>
+            </div>
+        </header>
+
+        <!-- Statistiques -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <h3>Total entreprises</h3>
+                <p class="stat-value" id="totalCompanies">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Avec site web</h3>
+                <p class="stat-value" id="withWebsite">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Avec email</h3>
+                <p class="stat-value" id="withEmail">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Dernière MAJ</h3>
+                <p class="stat-value small" id="lastUpdate">-</p>
+            </div>
+        </section>
+
+        <!-- Contrôle du scraper -->
+        <section class="scraper-control">
+            <h2>⚙️ Contrôle du Scraper</h2>
+            <div class="control-panel">
+                <div class="status">
+                    <span class="status-label">Statut:</span>
+                    <span id="scraperStatus" class="status-badge status-stopped">Arrêté</span>
+                </div>
+                <div class="status">
+                    <span class="status-label">Progression:</span>
+                    <span id="scraperProgress">-</span>
+                </div>
+                <div class="control-buttons">
+                    <button id="startScraper" class="btn btn-success">▶️ Démarrer</button>
+                    <button id="stopScraper" class="btn btn-danger" disabled>⏹️ Arrêter</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Filtres -->
+        <section class="filters">
+            <h2>🔍 Filtres</h2>
+            <div class="filters-grid">
+                <div class="filter-group">
+                    <label for="cityFilter">Ville</label>
+                    <select id="cityFilter" class="form-control">
+                        <option value="">Toutes les villes</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="websiteFilter">Site web</label>
+                    <select id="websiteFilter" class="form-control">
+                        <option value="">Tous</option>
+                        <option value="true">Avec site web</option>
+                        <option value="false">Sans site web</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="emailFilter">Email</label>
+                    <select id="emailFilter" class="form-control">
+                        <option value="">Tous</option>
+                        <option value="true">Avec email</option>
+                        <option value="false">Sans email</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="searchFilter">Recherche</label>
+                    <input type="text" id="searchFilter" class="form-control" placeholder="Nom ou adresse...">
+                </div>
+                <div class="filter-group">
+                    <button id="applyFilters" class="btn btn-primary">Appliquer</button>
+                    <button id="resetFilters" class="btn btn-secondary">Réinitialiser</button>
+                </div>
+                <div class="filter-group">
+                    <button id="exportCsv" class="btn btn-success">📥 Exporter CSV</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Top villes -->
+        <section class="top-cities">
+            <h2>📊 Top 10 Villes</h2>
+            <div id="citiesChart" class="cities-list"></div>
+        </section>
+
+        <!-- Liste des entreprises -->
+        <section class="companies-section">
+            <h2>🏢 Entreprises (<span id="companiesCount">0</span>)</h2>
+            <div class="table-container">
+                <table class="companies-table">
+                    <thead>
+                        <tr>
+                            <th>Entreprise</th>
+                            <th>Ville</th>
+                            <th>Adresse</th>
+                            <th>Téléphone</th>
+                            <th>Site web</th>
+                            <th>Email</th>
+                            <th>Note</th>
+                            <th>Avis</th>
+                        </tr>
+                    </thead>
+                    <tbody id="companiesTable">
+                        <tr>
+                            <td colspan="8" class="text-center">Chargement...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+

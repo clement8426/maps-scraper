@@ -1,25 +1,31 @@
-# Fichiers de données
-*.csv
-*.json
-
-# Checkpoints et données intermédiaires
-checkpoint.json
-intermediate_data.csv
-base_tech_suisse*.csv
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
 venv/
+env/
 ENV/
-.venv
+.venv/
+
+# Données générées
+backend/*.csv
+backend/*.db
+backend/*.json
+backend/companies.db-*
 
 # Playwright
-.playwright/
+ms-playwright/
+
+# Environnement
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
 
 # IDE
 .vscode/
@@ -27,9 +33,20 @@ ENV/
 *.swp
 *.swo
 *~
+.DS_Store
 
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
+# Temporaire
+*.tmp
+*.temp
+maps_page.html
+maps_page_text.txt
 
+# Build
+dist/
+build/
+*.egg-info/

@@ -1,217 +1,283 @@
-# 🚀 Scraper Google Maps - Suisse Romande (Mode Guérilla)
+# 🕷️ Scraper Google Maps - Suisse Romande
 
-Scraper automatisé pour extraire et enrichir les données d'entreprises tech depuis Google Maps, avec focus sur le **canton de Neuchâtel** et la Suisse Romande.
+**Système complet de scraping avec interface web** pour extraire et gérer les données d'entreprises tech depuis Google Maps.
 
-## 🎯 Fonctionnalités
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-### Phase 1: Harvesting (Récolte)
-- Recherche automatisée sur Google Maps
-- Extraction des noms et liens Maps
-- Gestion automatique des cookies
+---
 
-### Phase 2: Enrichissement
-- **Adresse complète**
-- **Téléphone**
-- **Site web**
-- **Note Google** (étoiles)
-- **Nombre d'avis**
+## ⚡ Quick Start
 
-### Phase 3: Mining (Fouille)
-- **Extraction d'emails** depuis les sites web
-- **Validation DNS** des emails (suppression des emails fictifs)
-- **Liens réseaux sociaux** (LinkedIn, Facebook, Twitter, Instagram)
+### Sur VPS (Recommandé)
 
-### Bonus
-- **Base de données SQLite** (`companies.db`)
-- **Sauvegarde incrémentale** (reprend après interruption)
-- **Anti-détection** avancé (user-agents rotatifs, delays aléatoires)
-
-## 📍 Zones géographiques couvertes
-
-### Priorité: Canton de Neuchâtel
-- Neuchâtel
-- La Chaux-de-Fonds
-- Le Locle
-- Val-de-Ruz
-- Val-de-Travers
-- Fleurier
-- Cernier
-- Peseux
-- Colombier
-- Marin-Epagnier
-- Saint-Blaise
-- Boudry
-- Cressier
-
-### Villes proches (hors canton)
-- Yverdon-les-Bains
-- Pontarlier
-- Morteau
-- Besançon
-
-### Autres villes Suisse Romande
-- Genève, Lausanne, Fribourg, Sion, Nyon, Renens, Meyrin, Vevey, Montreux, Delémont, Porrentruy
-
-## 🔍 Mots-clés recherchés
-
-**40+ mots-clés** couvrant:
-- Développement web & digital (Agence Web, Web design, UX Designer, etc.)
-- Développement spécialisé (Full Stack, Frontend, Backend, Mobile app, E-commerce)
-- Software & SaaS (Startup tech, SaaS company, Scale-up)
-- Sécurité & infrastructure (Cybersécurité, Cloud provider, DevOps)
-- Marketing digital (SEO, Marketing digital, Social media)
-- Data & IA (Data science, Machine Learning, Big Data)
-
-## 🛠️ Installation
-
-### 1. Prérequis
 ```bash
-Python 3.8+
+# 1. Cloner le projet
+git clone https://github.com/VOTRE_USERNAME/maps-scrap.git
+cd maps-scrap
+
+# 2. Installer (tout automatique)
+sudo ./scripts/install.sh
+
+# 3. Ouvrir l'interface web
+# URL affichée en fin d'installation
 ```
 
-### 2. Installation des dépendances
+**⏱️ Temps : 5-10 minutes**
+
+### En local (Développement)
+
 ```bash
+# 1. Cloner et installer
+git clone https://github.com/VOTRE_USERNAME/maps-scrap.git
+cd maps-scrap
 pip install -r requirements.txt
-```
-
-### 3. Installation de Playwright
-```bash
-# Firefox (recommandé)
 playwright install firefox
 
-# Ou Chromium
-playwright install chromium
+# 2. Configuration
+cp env.example .env
+nano .env  # Modifier USERNAME et PASSWORD
+
+# 3. Lancer
+cd backend
+python app.py
+# Ouvrir http://localhost:5000
 ```
 
-## 🚀 Utilisation
+---
 
-### Lancement simple
+## 📁 Structure du projet
+
+```
+maps-scrap/
+├── backend/              # Backend Flask + Scraper
+│   ├── app.py           # API REST
+│   ├── scraper_suisse_romande.py  # Scraper principal
+│   └── utils/           # Utilitaires (validation emails, etc.)
+├── frontend/            # Interface web
+│   ├── index.html      # Dashboard
+│   ├── style.css       # Design moderne
+│   └── script.js       # Interactivité
+├── scripts/             # Scripts d'installation
+│   ├── install.sh      # Installation VPS (automatique)
+│   └── start.sh        # Démarrage manuel
+├── docs/                # Documentation
+│   ├── DEPLOY.md       # Guide déploiement VPS
+│   └── QUICKSTART.md   # Guide rapide
+├── tests/               # Tests et outils de debug
+└── requirements.txt     # Dépendances Python
+```
+
+---
+
+## ✨ Fonctionnalités
+
+### 🎯 Scraping
+- **25 villes** (Canton de Neuchâtel + Suisse Romande)
+- **40 mots-clés** tech (Web, SaaS, DevOps, Data, IA...)
+- **Extraction** : nom, adresse, téléphone, site, email, note, avis
+- **Anti-détection** : user-agents rotatifs, délais aléatoires
+- **Reprise automatique** après interruption
+
+### 🌐 Interface Web
+- **Dashboard temps réel** avec statistiques
+- **Filtres avancés** (ville, email, site web)
+- **Contrôle du scraper** (démarrer/arrêter)
+- **Export CSV** avec filtres
+- **Graphiques** (top villes)
+
+### 💾 Stockage
+- **SQLite** (base de données embarquée)
+- **Export CSV** à la demande
+- **Sauvegarde automatique**
+
+### 🔒 Sécurité
+- **Double authentification** (Nginx + Flask)
+- **Firewall configuré** automatiquement
+- **HTTPS ready** (certificat Let's Encrypt)
+
+### ✅ Validation
+- **Emails vérifiés** par DNS (MX records)
+- **Suppression des emails fictifs**
+- **Nettoyage automatique**
+
+---
+
+## 🗺️ Zones géographiques
+
+### Canton de Neuchâtel (priorité)
+Neuchâtel, La Chaux-de-Fonds, Le Locle, Val-de-Ruz, Val-de-Travers, Fleurier, Cernier, Peseux, Colombier, Marin-Epagnier, Saint-Blaise, Boudry, Cressier
+
+### Villes proches
+Yverdon-les-Bains, Pontarlier, Morteau, Besançon
+
+### Suisse Romande
+Genève, Lausanne, Fribourg, Sion, Nyon, Renens, Meyrin, Vevey, Montreux, Delémont, Porrentruy
+
+**Total : 1000 combinaisons possibles** (25 villes × 40 mots-clés)
+
+---
+
+## 📊 Résultats attendus
+
+- **Volume** : 10 000 - 50 000 entreprises
+- **Temps** : 8-12h pour tout scraper
+- **Qualité** : Emails validés DNS, données publiques uniquement
+
+---
+
+## 🛠️ Commandes utiles
+
 ```bash
-python scraper_suisse_romande.py
+# Service systemd
+sudo systemctl status scraper-web
+sudo systemctl restart scraper-web
+sudo journalctl -u scraper-web -f
+
+# Base de données
+cd backend && sqlite3 companies.db
+SELECT * FROM companies WHERE city = 'Neuchâtel' LIMIT 10;
+
+# Mise à jour
+git pull
+sudo systemctl restart scraper-web
 ```
 
-Le script va :
-1. Créer/ouvrir la base de données SQLite `companies.db`
-2. Pour chaque combinaison ville × mot-clé :
-   - Rechercher sur Google Maps
-   - Enrichir les fiches (adresse, téléphone, site, note, avis)
-   - Extraire les emails depuis les sites web
-   - **Valider les emails** (DNS MX records)
-   - Sauvegarder dans CSV + SQLite
+---
 
-### Reprise après interruption
-Le script sauvegarde automatiquement sa progression dans `checkpoint.json`. En cas d'interruption (Ctrl+C, crash), relancez simplement :
+## 📖 Documentation
+
+- **[QUICKSTART.md](docs/QUICKSTART.md)** - Démarrage rapide (5 min)
+- **[DEPLOY.md](docs/DEPLOY.md)** - Guide de déploiement complet
+- **[API Documentation](#api-endpoints)** - Endpoints REST
+
+---
+
+## 🔌 API Endpoints
+
+```
+GET  /                      # Dashboard HTML
+GET  /api/companies         # Liste des entreprises (avec filtres)
+GET  /api/stats            # Statistiques globales
+GET  /api/cities           # Liste des villes
+GET  /api/scraper/status   # Statut du scraper
+POST /api/scraper/start    # Démarrer le scraper
+POST /api/scraper/stop     # Arrêter le scraper
+GET  /api/export/csv       # Exporter en CSV
+```
+
+### Exemples
+
 ```bash
-python scraper_suisse_romande.py
-```
-Il reprendra là où il s'était arrêté.
+# Obtenir les statistiques
+curl -u admin:password http://localhost:5000/api/stats
 
-### Repartir de zéro
-```bash
-rm checkpoint.json intermediate_data.csv companies.db
-python scraper_suisse_romande.py
-```
+# Filtrer par ville
+curl -u admin:password "http://localhost:5000/api/companies?city=Neuchâtel"
 
-## 📂 Fichiers générés
-
-- **`base_tech_suisse.csv`** : Fichier final avec toutes les données
-- **`intermediate_data.csv`** : Données intermédiaires (sauvegarde automatique)
-- **`companies.db`** : Base de données SQLite
-- **`checkpoint.json`** : Point de reprise
-
-## 🗄️ Base de données SQLite
-
-La base `companies.db` contient une table `companies` avec tous les champs :
-```sql
-SELECT * FROM companies WHERE city = 'Neuchâtel' AND email IS NOT NULL;
+# Entreprises avec email uniquement
+curl -u admin:password "http://localhost:5000/api/companies?has_email=true"
 ```
 
-Requête exemple pour exporter :
-```bash
-sqlite3 companies.db ".mode csv" ".output neuchatel_companies.csv" \
-  "SELECT * FROM companies WHERE city = 'Neuchâtel' ORDER BY rating DESC;"
-```
-
-## ✅ Validation des emails
-
-Le script **valide automatiquement** tous les emails extraits :
-1. Format valide (regex)
-2. Domaine valide
-3. **DNS MX records** (vérification que le serveur mail existe)
-4. Suppression des emails génériques/fictifs (noreply@, test@, etc.)
-
-Seuls les emails **validés** sont sauvegardés.
+---
 
 ## ⚙️ Configuration
 
-Modifiez les constantes dans `scraper_suisse_romande.py` :
+### Variables d'environnement (.env)
 
-```python
-# Navigateur : "firefox" (recommandé) ou "chromium"
-BROWSER_TYPE = "firefox"
-
-# Délais pour simuler un humain
-MIN_DELAY = 1.5
-MAX_DELAY = 4.0
-
-# Ajouter/retirer des villes
-CITIES = [...]
-
-# Ajouter/retirer des mots-clés
-KEYWORDS = [...]
+```bash
+WEB_USERNAME=admin          # Nom d'utilisateur interface web
+WEB_PASSWORD=votre_mdp      # Mot de passe
+PORT=5000                   # Port du serveur
+DEBUG=False                 # Mode debug (False en production)
 ```
 
-## 🛡️ Anti-détection
+### Personnaliser les recherches
 
-- **11 User-Agents différents** (Chrome, Firefox, Safari, Edge)
-- Rotation automatique à chaque recherche
-- Délais aléatoires entre actions
-- Navigation naturelle (Google.com → Google Maps)
-- Gestion automatique des cookies
-- Masquage des signaux d'automatisation
+Modifier `backend/scraper_suisse_romande.py` :
 
-## ⚠️ Avertissements
+```python
+# Ajouter des villes (ligne ~20)
+CITIES = [
+    "Neuchâtel", "Le Locle",
+    "Votre Ville",  # Ajoutez ici
+]
 
-1. **Légalité** : Ce script est à usage personnel/éducatif. Assurez-vous de respecter les CGU de Google et la législation sur la protection des données (RGPD, LPD suisse).
-2. **Rate limiting** : Le script intègre des délais pour éviter le blocage, mais Google peut quand même bloquer en cas d'usage intensif.
-3. **Données publiques** : Seules les données publiques accessibles sur Google Maps sont extraites.
+# Ajouter des mots-clés (ligne ~35)
+KEYWORDS = [
+    "Agence Web", "Startup",
+    "Votre Keyword",  # Ajoutez ici
+]
+```
 
-## 📊 Statistiques
-
-Avec la configuration actuelle :
-- **25 villes** × **40 mots-clés** = **1000 recherches possibles**
-- Environ **10-50 entreprises par recherche**
-- Durée estimée : **8-12 heures** (avec tous les mots-clés et villes)
+---
 
 ## 🐛 Dépannage
 
-### Le navigateur crash
-- Essayez Firefox au lieu de Chromium : `BROWSER_TYPE = "firefox"`
-- Installez Firefox : `playwright install firefox`
-
-### Timeout lors de l'enrichissement
-- Certains sites sont lents ou bloquent les scrapers
-- Les erreurs sont gérées automatiquement (le script continue)
-
-### Aucun email trouvé
-- Beaucoup de sites n'affichent pas d'emails
-- Certains utilisent des formulaires de contact uniquement
-- Les emails trouvés sont validés (DNS), donc certains sont rejetés
-
-### Base de données corrompue
+### Le service ne démarre pas
 ```bash
-rm companies.db
-python scraper_suisse_romande.py
+sudo journalctl -u scraper-web -n 50
+sudo systemctl restart scraper-web
 ```
+
+### Impossible d'accéder à l'interface
+```bash
+sudo systemctl status nginx
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### Le scraper ne trouve rien
+```bash
+cd /home/scraper/maps-scraper
+source venv/bin/activate
+playwright install firefox
+playwright install-deps firefox
+```
+
+### Réinitialiser les données
+```bash
+cd /home/scraper/maps-scraper/backend
+rm companies.db checkpoint.json intermediate_data.csv
+sudo systemctl restart scraper-web
+```
+
+---
+
+## ⚠️ Avertissements légaux
+
+- **Usage personnel/éducatif uniquement**
+- Respectez les CGU de Google Maps
+- Respectez le RGPD et la LPD suisse
+- Données publiques uniquement
+- Ne pas utiliser à des fins commerciales sans autorisation
+
+---
+
+## 🤝 Contribution
+
+Les contributions sont les bienvenues !
+
+1. Fork le projet
+2. Créer une branche (`git checkout -b feature/amelioration`)
+3. Commit (`git commit -m 'Ajout fonctionnalité'`)
+4. Push (`git push origin feature/amelioration`)
+5. Ouvrir une Pull Request
+
+---
 
 ## 📝 Licence
 
 Ce projet est fourni à des fins éducatives. Utilisez-le de manière responsable.
 
-## 🤝 Contribution
+---
 
-Pour ajouter des villes ou mots-clés, modifiez directement les listes `CITIES` et `KEYWORDS` dans le fichier principal.
+## 🆘 Support
+
+- 📖 [Documentation complète](docs/)
+- 🐛 [Issues GitHub](https://github.com/VOTRE_USERNAME/maps-scrap/issues)
+- 💬 [Discussions](https://github.com/VOTRE_USERNAME/maps-scrap/discussions)
 
 ---
 
-**Bon scraping ! 🕷️**
+**Fait avec ❤️ pour le canton de Neuchâtel et la Suisse Romande**
