@@ -117,7 +117,18 @@ async function initDbPage() {
     const modalTitle = document.getElementById('modalTitle');
     const modalContent = document.getElementById('modalContent');
     modalTitle.textContent = title;
-    modalContent.textContent = content || '(vide)';
+    
+    // Formater le contenu selon le type
+    let formattedContent = content || '(vide)';
+    
+    // Si c'est une liste séparée par virgules, formater en liste
+    if (formattedContent.includes(',') && formattedContent.length > 50) {
+      const items = formattedContent.split(',').map(item => item.trim()).filter(item => item);
+      formattedContent = items.map((item, idx) => `${idx + 1}. ${item}`).join('\n');
+    }
+    
+    // Si c'est une URL, la rendre cliquable (mais on garde le texte brut dans la modal)
+    modalContent.textContent = formattedContent;
     modal.style.display = 'flex';
   }
 
@@ -149,23 +160,50 @@ async function initDbPage() {
       };
       
       tr.innerHTML = `
-        <td title="${r.company_name || ''}">${r.company_name || '—'}</td>
-        <td>${r.city || '—'}</td>
-        <td>${r.website ? `<a href="${r.website}" target="_blank" title="${r.website}">${formatText(r.website.replace(/^https?:\/\//, ''), 25)}</a>` : '—'}</td>
-        <td title="${r.email || ''}">${formatText(r.email || '', 30)}</td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.company_name || '—'}</td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.city || '—'}</td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.website ? `<a href="${r.website}" target="_blank" onclick="event.stopPropagation();" title="${r.website}">${formatText(r.website.replace(/^https?:\/\//, ''), 25)}</a>` : '—'}</td>
+        <td class="clickable" title="Cliquer pour voir le détail complet">${formatText(r.email || '', 30)}</td>
         <td class="clickable" title="Cliquer pour voir le détail complet">${formatText(r.tech_stack || '', 80)}</td>
-        <td title="${r.emails_osint || ''}">${formatText(formatEmails(r.emails_osint), 50)}</td>
+        <td class="clickable" title="Cliquer pour voir le détail complet">${formatText(formatEmails(r.emails_osint), 50)}</td>
         <td class="clickable" title="Cliquer pour voir le détail complet">${r.subdomains ? `✓ ${r.subdomains.split(',').length} sub` : '—'}</td>
         <td class="clickable" title="Cliquer pour voir le détail complet">${r.wayback_urls ? `✓ ${r.wayback_urls.split(',').length} URLs` : '—'}</td>
-        <td><span class="badge ${r.osint_status === 'Done' ? 'badge-success' : 'badge-muted'}">${r.osint_status || 'N/A'}</span></td>
-        <td>${r.osint_updated_at ? new Date(r.osint_updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+        <td class="clickable" title="Cliquer pour voir le détail"><span class="badge ${r.osint_status === 'Done' ? 'badge-success' : 'badge-muted'}">${r.osint_status || 'N/A'}</span></td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.osint_updated_at ? new Date(r.osint_updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
       `;
       
-      // Ajouter les event listeners pour les clics
+      // Ajouter les event listeners pour les clics sur toutes les cellules
       const cells = tr.querySelectorAll('td');
-      cells[4].onclick = () => showModal('Stack Technique - ' + r.company_name, r.tech_stack_full);
-      cells[6].onclick = () => showModal('Sous-domaines - ' + r.company_name, r.subdomains_full);
-      cells[7].onclick = () => showModal('Wayback URLs - ' + r.company_name, r.wayback_urls_full);
+      
+      // Entreprise (0)
+      cells[0].onclick = () => showModal('Entreprise - ' + r.company_name, r.company_name || '(vide)');
+      
+      // Ville (1)
+      cells[1].onclick = () => showModal('Ville - ' + r.company_name, r.city || '(vide)');
+      
+      // Site web (2)
+      cells[2].onclick = () => showModal('Site Web - ' + r.company_name, r.website || '(vide)');
+      
+      // Email Base (3)
+      cells[3].onclick = () => showModal('Email Base - ' + r.company_name, r.email || '(vide)');
+      
+      // Stack Tech (4)
+      cells[4].onclick = () => showModal('Stack Technique - ' + r.company_name, r.tech_stack_full || r.tech_stack || '(vide)');
+      
+      // Emails OSINT (5)
+      cells[5].onclick = () => showModal('Emails OSINT - ' + r.company_name, r.emails_osint || '(vide)');
+      
+      // Sous-domaines (6)
+      cells[6].onclick = () => showModal('Sous-domaines - ' + r.company_name, r.subdomains_full || r.subdomains || '(vide)');
+      
+      // Wayback URLs (7)
+      cells[7].onclick = () => showModal('Wayback URLs - ' + r.company_name, r.wayback_urls_full || r.wayback_urls || '(vide)');
+      
+      // Status (8)
+      cells[8].onclick = () => showModal('Status OSINT - ' + r.company_name, r.osint_status || 'N/A');
+      
+      // Date MAJ (9)
+      cells[9].onclick = () => showModal('Date MAJ OSINT - ' + r.company_name, r.osint_updated_at ? new Date(r.osint_updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '(vide)');
       
       tableBody.appendChild(tr);
     });

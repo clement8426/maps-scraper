@@ -187,13 +187,31 @@ header {
 }
 
 .table td {
-  cursor: pointer;
   white-space: normal;
   display: table-cell;
 }
 
-.table td:hover {
+.table td.clickable {
+  cursor: pointer;
+  position: relative;
+}
+
+.table td.clickable:hover {
   background: #f1f5f9;
+}
+
+.table td.clickable::after {
+  content: '👁️';
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  font-size: 10px;
+  opacity: 0.3;
+  transition: opacity 0.2s;
+}
+
+.table td.clickable:hover::after {
+  opacity: 0.6;
 }
 
 /* Colonnes spécifiques avec largeur fixe */
@@ -301,13 +319,33 @@ header {
 #modalContent {
   white-space: pre-wrap;
   word-wrap: break-word;
-  font-family: monospace;
-  font-size: 12px;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 13px;
   background: #f8fafc;
-  padding: 12px;
+  padding: 16px;
   border-radius: 4px;
   max-height: 60vh;
   overflow: auto;
+  line-height: 1.6;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+}
+
+#modalContent::-webkit-scrollbar {
+  width: 8px;
+}
+
+#modalContent::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+#modalContent::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+#modalContent::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 .badge {
   padding: 4px 8px;
