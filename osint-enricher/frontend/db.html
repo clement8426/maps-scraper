@@ -40,20 +40,34 @@
 
     <div class="card">
       <h3>Résultats</h3>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Entreprise</th>
-            <th>Ville</th>
-            <th>Site</th>
-            <th>Email</th>
-            <th>Stack</th>
-            <th>Status</th>
-            <th>Maj OSINT</th>
-          </tr>
-        </thead>
-        <tbody id="dbRows"></tbody>
-      </table>
+      <div class="table-wrapper">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width: 150px;">Entreprise</th>
+              <th style="width: 100px;">Ville</th>
+              <th style="width: 150px;">Site</th>
+              <th style="width: 150px;">Email Base</th>
+              <th style="width: 200px;">Stack Tech</th>
+              <th style="width: 150px;">Emails OSINT</th>
+              <th style="width: 150px;">Sous-domaines</th>
+              <th style="width: 150px;">Wayback URLs</th>
+              <th style="width: 80px;">Status</th>
+              <th style="width: 120px;">Maj OSINT</th>
+            </tr>
+          </thead>
+          <tbody id="dbRows"></tbody>
+        </table>
+      </div>
+    </div>
+    
+    <!-- Modal pour afficher les détails complets -->
+    <div id="detailModal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <span class="modal-close">&times;</span>
+        <h3 id="modalTitle"></h3>
+        <pre id="modalContent"></pre>
+      </div>
     </div>
   </div>
 

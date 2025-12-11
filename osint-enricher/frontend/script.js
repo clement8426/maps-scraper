@@ -98,13 +98,22 @@ async function initDbPage() {
     });
   }
 
+  function showModal(title, content) {
+    const modal = document.getElementById('detailModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalContent = document.getElementById('modalContent');
+    modalTitle.textContent = title;
+    modalContent.textContent = content || '(vide)';
+    modal.style.display = 'flex';
+  }
+
   async function loadRows() {
     const params = {
       city: citySelect.value || '',
       has_email: hasEmail.checked,
       has_website: hasWebsite.checked,
       status: statusSel.value || '',
-      limit: 100,
+      limit: 500,
       offset: 0,
     };
     const data = await api.companies(params);
@@ -112,17 +121,40 @@ async function initDbPage() {
     data.items.forEach((r) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${r.company_name || ''}</td>
+        <td title="${r.company_name || ''}">${r.company_name || ''}</td>
         <td>${r.city || ''}</td>
-        <td>${r.website ? `<a href=\"${r.website}\" target=\"_blank\">${r.website}</a>` : ''}</td>
-        <td>${r.email || ''}</td>
-        <td>${r.tech_stack || ''}</td>
-        <td><span class=\"badge ${r.osint_status === 'Done' ? 'badge-success' : 'badge-muted'}\">${r.osint_status || 'N/A'}</span></td>
-        <td>${r.osint_updated_at ? new Date(r.osint_updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' }) : ''}</td>
+        <td>${r.website ? `<a href="${r.website}" target="_blank" title="${r.website}">${r.website.substring(0, 30)}...</a>` : ''}</td>
+        <td title="${r.email || ''}">${r.email || ''}</td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.tech_stack || '—'}</td>
+        <td title="${r.emails_osint || ''}">${r.emails_osint || '—'}</td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.subdomains ? '✓ (' + (r.subdomains.split(',').length) + ')' : '—'}</td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.wayback_urls ? '✓ (' + (r.wayback_urls.split(',').length) + ')' : '—'}</td>
+        <td><span class="badge ${r.osint_status === 'Done' ? 'badge-success' : 'badge-muted'}">${r.osint_status || 'N/A'}</span></td>
+        <td>${r.osint_updated_at ? new Date(r.osint_updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' }).split(',')[0] : ''}</td>
       `;
+      
+      // Ajouter les event listeners pour les clics
+      const cells = tr.querySelectorAll('td');
+      cells[4].onclick = () => showModal('Stack Technique - ' + r.company_name, r.tech_stack_full);
+      cells[6].onclick = () => showModal('Sous-domaines - ' + r.company_name, r.subdomains_full);
+      cells[7].onclick = () => showModal('Wayback URLs - ' + r.company_name, r.wayback_urls_full);
+      
       tableBody.appendChild(tr);
     });
   }
+  
+  // Fermer la modal
+  if (document.querySelector('.modal-close')) {
+    document.querySelector('.modal-close').onclick = () => {
+      document.getElementById('detailModal').style.display = 'none';
+    };
+  }
+  window.onclick = (e) => {
+    const modal = document.getElementById('detailModal');
+    if (modal && e.target === modal) {
+      modal.style.display = 'none';
+    }
+  };
 
   exportBtn.onclick = () => {
     const qs = new URLSearchParams({

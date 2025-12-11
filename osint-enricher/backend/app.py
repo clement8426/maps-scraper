@@ -168,7 +168,9 @@ def list_companies():
 
     where_clause = "WHERE " + " AND ".join(filters) if filters else ""
     query = f"""
-        SELECT id, company_name, city, website, email, tech_stack, osint_status, osint_updated_at
+        SELECT id, company_name, city, website, email, 
+               tech_stack, emails_osint, pdf_emails, subdomains, 
+               whois_raw, wayback_urls, osint_status, osint_updated_at
         FROM companies
         {where_clause}
         ORDER BY updated_at DESC
@@ -180,6 +182,13 @@ def list_companies():
     cur.execute(query, params)
     rows = cur.fetchall()
     conn.close()
+    
+    # Fonction pour tronquer les longues chaînes
+    def truncate(text, max_len=150):
+        if not text:
+            return text
+        return text[:max_len] + "..." if len(text) > max_len else text
+    
     data = [
         {
             "id": r[0],
@@ -187,9 +196,18 @@ def list_companies():
             "city": r[2],
             "website": r[3],
             "email": r[4],
-            "tech_stack": r[5],
-            "osint_status": r[6],
-            "osint_updated_at": r[7],
+            "tech_stack": truncate(r[5], 200),
+            "tech_stack_full": r[5],
+            "emails_osint": r[6],
+            "pdf_emails": r[7],
+            "subdomains": truncate(r[8], 200),
+            "subdomains_full": r[8],
+            "whois_raw": truncate(r[9], 200),
+            "whois_raw_full": r[9],
+            "wayback_urls": truncate(r[10], 200),
+            "wayback_urls_full": r[10],
+            "osint_status": r[11],
+            "osint_updated_at": r[12],
         }
         for r in rows
     ]
