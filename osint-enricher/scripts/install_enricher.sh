@@ -18,17 +18,43 @@ fi
 
 apt-get update
 apt-get install -y python3-venv python3-dev build-essential \
-  whatweb theharvester subfinder amass pdfgrep whois curl
+  whatweb pdfgrep whois curl git golang-go
+
+# Installer theHarvester via pip (global)
+pip3 install theHarvester --break-system-packages || python3 -m pip install theHarvester
+
+# Installer subfinder (Go)
+if ! command -v subfinder &> /dev/null; then
+  go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+  # Ajouter au PATH si nécessaire
+  if [[ -f "/home/${USER_NAME}/go/bin/subfinder" ]]; then
+    ln -sf "/home/${USER_NAME}/go/bin/subfinder" /usr/local/bin/subfinder || true
+  fi
+fi
+
+# Installer amass (Go)
+if ! command -v amass &> /dev/null; then
+  go install -v github.com/owasp-amass/amass/v4/...@master
+  # Ajouter au PATH si nécessaire
+  if [[ -f "/home/${USER_NAME}/go/bin/amass" ]]; then
+    ln -sf "/home/${USER_NAME}/go/bin/amass" /usr/local/bin/amass || true
+  fi
+fi
 
 cd "$APP_DIR"
 
+# Créer le .env dans le répertoire de l'app
 if [[ ! -f .env ]]; then
-cat > .env <<EOF
+  cat > .env <<EOF
 WEB_USERNAME=enricher
-WEB_PASSWORD=change_me
+WEB_PASSWORD=change_me_123!
 DATABASE_PATH=/home/${USER_NAME}/maps-scraper/backend/companies.db
 EOF
-  echo "Fichier .env créé (pensez à changer WEB_PASSWORD)."
+  chown "${USER_NAME}:${USER_NAME}" .env
+  echo "✅ Fichier .env créé dans $APP_DIR/.env"
+  echo "⚠️  Pensez à changer WEB_PASSWORD dans .env"
+else
+  echo "ℹ️  Fichier .env existe déjà"
 fi
 
 if [[ -d venv ]]; then rm -rf venv; fi
@@ -85,7 +111,24 @@ systemctl daemon-reload
 systemctl enable ${SERVICE_NAME}
 systemctl restart ${SERVICE_NAME}
 
-echo "=== Terminé ==="
-echo "Interface enrichissement : http://<IP>:$NGINX_PORT/enrich"
-echo "Exploration BDD          : http://<IP>:$NGINX_PORT/db"
+echo ""
+echo "=== Installation terminée ==="
+echo ""
+echo "📁 Fichier .env créé dans : $APP_DIR/.env"
+echo "🔐 Identifiants par défaut :"
+echo "   Username: enricher"
+echo "   Password: change_me_123!"
+echo "⚠️  Changez le mot de passe dans $APP_DIR/.env"
+echo ""
+echo "🌐 Accès web :"
+echo "   Enrichissement : http://<IP>:$NGINX_PORT/enrich"
+echo "   Exploration BDD: http://<IP>:$NGINX_PORT/db"
+echo ""
+echo "📊 Statut du service :"
+systemctl status ${SERVICE_NAME} --no-pager -l
+echo ""
+echo "📝 Commandes utiles :"
+echo "   sudo systemctl status ${SERVICE_NAME}"
+echo "   sudo systemctl restart ${SERVICE_NAME}"
+echo "   sudo journalctl -u ${SERVICE_NAME} -f"
 
