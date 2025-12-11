@@ -243,6 +243,12 @@ section h2 {
     transition: all 0.3s;
 }
 
+a.btn {
+    color: white;
+    text-decoration: none;
+    display: inline-block;
+}
+
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -282,6 +288,15 @@ section h2 {
 
 .btn-secondary:hover:not(:disabled) {
     background: #4b5563;
+}
+
+.btn-info {
+    background: #0ea5e9;
+    color: white;
+}
+
+.btn-info:hover:not(:disabled) {
+    background: #0284c7;
 }
 
 /* Top villes */

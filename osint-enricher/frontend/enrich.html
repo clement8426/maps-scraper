@@ -27,7 +27,11 @@
             <select id="cityFilter" class="input"></select>
           </label>
           <label>Limite
-            <input id="limitInput" type="number" class="input" value="50" min="1" max="500">
+            <input id="limitInput" type="number" class="input" value="50" min="1" max="10000">
+          </label>
+          <label>
+            <input type="checkbox" id="unlimitedMode">
+            Mode illimité (toute la BDD)
           </label>
           <label>
             <input type="checkbox" id="requireWebsite" checked>
@@ -42,12 +46,16 @@
       </div>
 
       <div class="card">
-        <h3>Instructions outils</h3>
-        <ul>
-          <li>Installer whatweb, theHarvester, subfinder, amass, pdfgrep, whois, curl</li>
-          <li>Assurez-vous que le PATH systemd inclut ces binaires</li>
-          <li>Le pipeline met à jour directement companies.db</li>
-        </ul>
+        <h3>🔧 Outils OSINT Utilisés</h3>
+        <div style="font-size: 14px; line-height: 1.6;">
+          <p><strong>🌐 WhatWeb</strong> - Identifie les technologies web (WordPress, Apache, frameworks, etc.)</p>
+          <p><strong>🔍 Subfinder</strong> - Découvre les sous-domaines (api.site.com, blog.site.com, etc.)</p>
+          <p><strong>🎯 Amass</strong> - Reconnaissance avancée et cartographie du réseau</p>
+          <p><strong>📋 WHOIS</strong> - Récupère les infos d'enregistrement du domaine (propriétaire, dates, etc.)</p>
+          <p><strong>📦 Wayback Machine</strong> - Archive les anciennes versions du site via archive.org</p>
+          <p style="margin-top: 10px; color: #64748b;">💡 Mode illimité : enrichit toute la base (plusieurs heures)</p>
+          <p style="color: #64748b;">⚠️ Progression sauvegardée - vous pouvez arrêter à tout moment</p>
+        </div>
       </div>
     </div>
 

@@ -6,7 +6,15 @@ import sqlite3
 import sys
 
 def main():
-    db_path = sys.argv[1] if len(sys.argv) > 1 else "../backend/companies.db"
+    # Vérifier si --yes est passé en argument
+    force = '--yes' in sys.argv or '-y' in sys.argv
+    db_path = None
+    for arg in sys.argv[1:]:
+        if not arg.startswith('-'):
+            db_path = arg
+            break
+    if not db_path:
+        db_path = "../backend/companies.db"
     
     print(f"🔄 Réinitialisation des statuts OSINT : {db_path}")
     print("")
@@ -21,11 +29,12 @@ def main():
     print(f"📊 Statistiques actuelles :")
     print(f"   - Entrées enrichies (Done) : {done_count}")
     
-    # Demander confirmation
-    response = input("\n⚠️  Voulez-vous réinitialiser TOUS les statuts OSINT ? (oui/non) : ")
-    if response.lower() not in ['oui', 'o', 'yes', 'y']:
-        print("❌ Annulé")
-        return
+    # Demander confirmation si pas de --yes
+    if not force:
+        response = input("\n⚠️  Voulez-vous réinitialiser TOUS les statuts OSINT ? (oui/non) : ")
+        if response.lower() not in ['oui', 'o', 'yes', 'y']:
+            print("❌ Annulé")
+            return
     
     # Réinitialiser les statuts et données OSINT
     cur.execute("""

@@ -19,9 +19,23 @@ async function initEnrichPage() {
   const logBox = document.querySelector('#logBox');
   const citySelect = document.querySelector('#cityFilter');
   const limitInput = document.querySelector('#limitInput');
+  const unlimitedMode = document.querySelector('#unlimitedMode');
   const requireWebsite = document.querySelector('#requireWebsite');
 
   if (!startBtn) return; // not on this page
+  
+  // Gérer le mode illimité
+  if (unlimitedMode) {
+    unlimitedMode.onchange = () => {
+      if (unlimitedMode.checked) {
+        limitInput.disabled = true;
+        limitInput.value = 999999;
+      } else {
+        limitInput.disabled = false;
+        limitInput.value = 50;
+      }
+    };
+  }
 
   async function loadCities() {
     const data = await api.cities();
