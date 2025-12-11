@@ -30,7 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Event listeners
     const refreshBtn = document.getElementById('refreshBtn');
-    const logoutBtn = document.getElementById('logoutBtn');
     const applyFiltersBtn = document.getElementById('applyFilters');
     const resetFiltersBtn = document.getElementById('resetFilters');
     const exportCsvBtn = document.getElementById('exportCsv');
@@ -38,14 +37,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const stopScraperBtn = document.getElementById('stopScraper');
     
     if (refreshBtn) {
-        refreshBtn.addEventListener('click', () => {
-            console.log('Refresh cliqué');
-            loadStats();
-            loadCompanies();
+        refreshBtn.addEventListener('click', async () => {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = '🔄 Chargement...';
+            
+            await loadStats();
+            await loadCompanies();
+            await loadScraperStatus();
+            
+            refreshBtn.disabled = false;
+            refreshBtn.textContent = '🔄 Actualiser';
         });
     }
-    
-    if (logoutBtn) logoutBtn.addEventListener('click', logout);
     if (applyFiltersBtn) applyFiltersBtn.addEventListener('click', applyFilters);
     if (resetFiltersBtn) resetFiltersBtn.addEventListener('click', resetFilters);
     if (exportCsvBtn) exportCsvBtn.addEventListener('click', exportCsv);

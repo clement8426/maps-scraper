@@ -50,8 +50,23 @@ async function initEnrichPage() {
 
   async function refreshStatus() {
     const st = await api.status();
-    statusEl.textContent = st.message || (st.running ? 'En cours' : 'Arrêté');
-    progressEl.textContent = `${st.processed || 0} / ${st.total || 0}`;
+    
+    // Statut stable : ne change pas entre chaque outil
+    if (st.running) {
+      statusEl.textContent = '🔄 En cours';
+      statusEl.className = 'status status-running';
+    } else {
+      statusEl.textContent = '⏸️ Arrêté';
+      statusEl.className = 'status status-stopped';
+    }
+    
+    // Afficher le message de progression séparément
+    if (st.message && st.running) {
+      progressEl.textContent = `${st.message} (${st.processed || 0}/${st.total || 0})`;
+    } else {
+      progressEl.textContent = `${st.processed || 0} / ${st.total || 0}`;
+    }
+    
     startBtn.disabled = !!st.running;
     stopBtn.disabled = !st.running;
   }
@@ -185,8 +200,15 @@ async function initDbPage() {
       tr.innerHTML = `
         <td class="clickable" title="Cliquer pour voir le détail">${r.company_name || '—'}</td>
         <td class="clickable" title="Cliquer pour voir le détail">${r.city || '—'}</td>
+        <td class="clickable" title="Cliquer pour voir le lien">${r.maps_link ? `<a href="${r.maps_link}" target="_blank" onclick="event.stopPropagation();">🗺️ Maps</a>` : '—'}</td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.phone || '—'}</td>
+        <td class="clickable" title="Cliquer pour voir l'adresse complète">${formatText(r.address || '', 40)}</td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.rating ? `⭐ ${r.rating}` : '—'}</td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.reviews_count || '0'}</td>
+        <td class="clickable" title="Cliquer pour voir le détail">${r.tag || '—'}</td>
         <td class="clickable" title="Cliquer pour voir le détail">${r.website ? `<a href="${r.website}" target="_blank" onclick="event.stopPropagation();" title="${r.website}">${formatText(r.website.replace(/^https?:\/\//, ''), 25)}</a>` : '—'}</td>
         <td class="clickable" title="Cliquer pour voir le détail complet">${formatText(r.email || '', 30)}</td>
+        <td class="clickable" title="Cliquer pour voir les réseaux sociaux">${r.social_links ? '🔗 Réseaux' : '—'}</td>
         <td class="clickable" title="Cliquer pour voir le détail complet">${formatText(r.tech_stack || '', 80)}</td>
         <td class="clickable" title="Cliquer pour voir le détail complet">${formatText(formatEmails(r.emails_osint), 50)}</td>
         <td class="clickable" title="Cliquer pour voir le détail complet">${r.subdomains ? `✓ ${r.subdomains.split(',').length} sub` : '—'}</td>
@@ -204,29 +226,50 @@ async function initDbPage() {
       // Ville (1)
       cells[1].onclick = () => showModal('Ville - ' + r.company_name, r.city || '(vide)');
       
-      // Site web (2)
-      cells[2].onclick = () => showModal('Site Web - ' + r.company_name, r.website || '(vide)');
+      // Lien Maps (2)
+      cells[2].onclick = () => showModal('Lien Google Maps - ' + r.company_name, r.maps_link || '(vide)');
       
-      // Email Base (3)
-      cells[3].onclick = () => showModal('Email Base - ' + r.company_name, r.email || '(vide)');
+      // Téléphone (3)
+      cells[3].onclick = () => showModal('Téléphone - ' + r.company_name, r.phone || '(vide)');
       
-      // Stack Tech (4)
-      cells[4].onclick = () => showModal('Stack Technique - ' + r.company_name, r.tech_stack_full || r.tech_stack || '(vide)');
+      // Adresse (4)
+      cells[4].onclick = () => showModal('Adresse complète - ' + r.company_name, r.address_full || r.address || '(vide)');
       
-      // Emails OSINT (5)
-      cells[5].onclick = () => showModal('Emails OSINT - ' + r.company_name, r.emails_osint || '(vide)');
+      // Note (5)
+      cells[5].onclick = () => showModal('Note - ' + r.company_name, r.rating || '(vide)');
       
-      // Sous-domaines (6)
-      cells[6].onclick = () => showModal('Sous-domaines - ' + r.company_name, r.subdomains_full || r.subdomains || '(vide)');
+      // Nombre d'avis (6)
+      cells[6].onclick = () => showModal('Nombre d\'avis - ' + r.company_name, r.reviews_count || '0');
       
-      // Wayback URLs (7)
-      cells[7].onclick = () => showModal('Wayback URLs - ' + r.company_name, r.wayback_urls_full || r.wayback_urls || '(vide)');
+      // Tag (7)
+      cells[7].onclick = () => showModal('Tag / Catégorie - ' + r.company_name, r.tag || '(vide)');
       
-      // Status (8)
-      cells[8].onclick = () => showModal('Status OSINT - ' + r.company_name, r.osint_status || 'N/A');
+      // Site Web (8)
+      cells[8].onclick = () => showModal('Site Web - ' + r.company_name, r.website || '(vide)');
       
-      // Date MAJ (9)
-      cells[9].onclick = () => showModal('Date MAJ OSINT - ' + r.company_name, r.osint_updated_at ? new Date(r.osint_updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '(vide)');
+      // Email Base (9)
+      cells[9].onclick = () => showModal('Email Base - ' + r.company_name, r.email || '(vide)');
+      
+      // Réseaux sociaux (10)
+      cells[10].onclick = () => showModal('Réseaux Sociaux - ' + r.company_name, r.social_links_full || r.social_links || '(vide)');
+      
+      // Stack Tech (11)
+      cells[11].onclick = () => showModal('Stack Technique - ' + r.company_name, r.tech_stack_full || r.tech_stack || '(vide)');
+      
+      // Emails OSINT (12)
+      cells[12].onclick = () => showModal('Emails OSINT - ' + r.company_name, r.emails_osint_full || r.emails_osint || '(vide)');
+      
+      // Sous-domaines (13)
+      cells[13].onclick = () => showModal('Sous-domaines - ' + r.company_name, r.subdomains_full || r.subdomains || '(vide)');
+      
+      // Wayback URLs (14)
+      cells[14].onclick = () => showModal('Wayback URLs - ' + r.company_name, r.wayback_urls_full || r.wayback_urls || '(vide)');
+      
+      // Status (15)
+      cells[15].onclick = () => showModal('Status OSINT - ' + r.company_name, r.osint_status || 'N/A');
+      
+      // Date MAJ (16)
+      cells[16].onclick = () => showModal('Date MAJ OSINT - ' + r.company_name, r.osint_updated_at ? new Date(r.osint_updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '(vide)');
       
       tableBody.appendChild(tr);
     });
