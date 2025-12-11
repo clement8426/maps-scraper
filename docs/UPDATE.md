@@ -26,6 +26,9 @@ git pull origin main  # ou master
 source venv/bin/activate
 pip install -r requirements.txt
 
+# Si vous voyez un warning "unit file changed", recharger systemd d'abord
+sudo systemctl daemon-reload
+
 # Redémarrer le service pour prendre en compte les changements
 sudo systemctl restart scraper-web
 
@@ -83,8 +86,9 @@ Si vous voyez un processus, le scraper est actif.
 3. **SSH sur le VPS** : `ssh ubuntu@vps-7da9f2a0.vps.ovh.net`
 4. **Pull** : `cd ~/maps-scraper && git pull`
 5. **Mise à jour dépendances** (si nécessaire) : `source venv/bin/activate && pip install -r requirements.txt`
-6. **Redémarrage** : `sudo systemctl restart scraper-web`
-7. **Vérification** : `sudo systemctl status scraper-web`
+6. **Recharger systemd** (si warning) : `sudo systemctl daemon-reload`
+7. **Redémarrage** : `sudo systemctl restart scraper-web`
+8. **Vérification** : `sudo systemctl status scraper-web`
 
 ## 📝 Note importante
 

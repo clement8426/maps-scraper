@@ -390,7 +390,7 @@ def scrape_gmaps_urls(search_term, city, page, browser, context):
     
     print(f"--- Recherche : {search_term} à {city} ---")
     
-        try:
+    try:
             # Aller sur Google Maps avec une approche plus discrète
             try:
                 # D'abord aller sur Google.com pour paraître plus naturel
