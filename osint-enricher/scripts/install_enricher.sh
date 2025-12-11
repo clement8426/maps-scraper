@@ -100,7 +100,7 @@ Type=notify
 User=${USER_NAME}
 Group=${USER_NAME}
 WorkingDirectory=${APP_DIR}/backend
-Environment="PATH=${APP_DIR}/venv/bin"
+Environment="PATH=${APP_DIR}/venv/bin:/usr/local/bin:/usr/bin:/bin:/home/${USER_NAME}/go/bin"
 EnvironmentFile=${APP_DIR}/.env
 ExecStart=${APP_DIR}/venv/bin/gunicorn --bind 127.0.0.1:${PORT} app:app --workers 2
 Restart=always

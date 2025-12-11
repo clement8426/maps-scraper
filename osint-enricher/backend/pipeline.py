@@ -22,7 +22,25 @@ class OsintPipeline:
         self.db_path = db_path
         self.status = status_ref
         self.stop_flag = stop_flag_ref
+        self.available_tools = {}
+        self.check_tools()
         self.ensure_columns()
+    
+    def check_tools(self):
+        """Vérifie quels outils sont disponibles"""
+        tools = ["curl", "whatweb", "theHarvester", "subfinder", "amass", "whois"]
+        for tool in tools:
+            try:
+                result = subprocess.run(["which", tool], capture_output=True, timeout=3)
+                self.available_tools[tool] = (result.returncode == 0)
+            except:
+                self.available_tools[tool] = False
+        
+        available = [t for t, v in self.available_tools.items() if v]
+        missing = [t for t, v in self.available_tools.items() if not v]
+        log(f"Outils disponibles: {', '.join(available) if available else 'aucun'}")
+        if missing:
+            log(f"⚠️  Outils manquants: {', '.join(missing)}")
 
     def ensure_columns(self):
         cols = [
@@ -121,68 +139,63 @@ class OsintPipeline:
 
     # ---------- Individual steps ----------
     def run_cmd(self, cmd, timeout=40):
+        """Exécute une commande si l'outil est disponible"""
+        tool_name = cmd[0] if isinstance(cmd, list) else cmd.split()[0]
+        
+        # Si l'outil n'est pas marqué comme disponible, ne pas essayer
+        if not self.available_tools.get(tool_name, False):
+            return ""
+        
         try:
-            # Vérifier que la commande existe
-            which_cmd = cmd[0] if isinstance(cmd, list) else cmd.split()[0]
-            check = subprocess.run(["which", which_cmd], capture_output=True, timeout=5)
-            if check.returncode != 0:
-                log(f"  ⚠️  Commande non trouvée: {which_cmd}")
-                return ""
-            
             out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=timeout, text=True)
             return out
         except subprocess.TimeoutExpired:
-            log(f"  ⚠️  Timeout: {' '.join(cmd)}")
+            log(f"  ⚠️  Timeout: {tool_name}")
             return ""
         except FileNotFoundError:
-            log(f"  ⚠️  Commande non trouvée: {cmd[0]}")
+            # Marquer comme non disponible pour éviter de réessayer
+            self.available_tools[tool_name] = False
             return ""
         except Exception as e:
-            log(f"  ⚠️  Erreur: {' '.join(cmd)} - {str(e)[:100]}")
+            log(f"  ⚠️  Erreur {tool_name}: {str(e)[:80]}")
             return ""
 
     def run_whatweb(self, website):
-        if not website:
+        if not website or not self.available_tools.get("whatweb"):
             return None
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
         if not domain:
             return None
-        log(f"  → WhatWeb sur {domain}")
         res = self.run_cmd(["whatweb", domain, "--log-brief=-"])
         if not res:
-            log(f"  ⚠️  WhatWeb: aucun résultat")
             return None
         top = res.splitlines()[:5]
         result = "; ".join(top)
-        log(f"  ✅ WhatWeb: {result[:100]}...")
+        log(f"  ✅ WhatWeb: {result[:80]}...")
         return result
 
     def run_email_tools(self, website):
+        if not website:
+            return None
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
-        log(f"  → Recherche emails pour {domain}")
         out = []
+        
         # theHarvester
-        harvest = self.run_cmd(["theHarvester", "-d", domain, "-b", "all"])
-        if harvest:
-            log(f"  ✅ theHarvester: {len(harvest)} caractères")
-        else:
-            log(f"  ⚠️  theHarvester: non disponible ou échec")
-        out.append(harvest)
-        # emailharvester (si installé)
-        eh = self.run_cmd(["emailharvester", "-d", domain])
-        if eh:
-            log(f"  ✅ emailharvester: {len(eh)} caractères")
-        out.append(eh)
+        if self.available_tools.get("theHarvester"):
+            harvest = self.run_cmd(["theHarvester", "-d", domain, "-b", "all"])
+            if harvest:
+                log(f"  ✅ theHarvester: {len(harvest)} car")
+            out.append(harvest)
+        
         # Regex extraction
         emails = set()
         for blob in out:
             for m in re.findall(r"[a-zA-Z0-9._%+-]+@" + re.escape(domain), blob):
                 emails.add(m.lower())
+        
         result = ", ".join(sorted(emails)) if emails else None
         if result:
-            log(f"  ✅ Emails trouvés: {len(emails)}")
-        else:
-            log(f"  ⚠️  Aucun email trouvé")
+            log(f"  ✅ Emails: {len(emails)}")
         return result
 
     def run_pdf_hunt(self, website):
@@ -191,23 +204,35 @@ class OsintPipeline:
         return f"See dorks manually for {domain}"
 
     def run_subfinder(self, website):
+        if not website or not self.available_tools.get("subfinder"):
+            return None
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
         res = self.run_cmd(["subfinder", "-d", domain, "-silent"])
         if not res:
             return None
         subs = [line.strip() for line in res.splitlines() if line.strip()]
+        if subs:
+            log(f"  ✅ Subfinder: {len(subs)} subs")
         return ", ".join(subs[:50]) if subs else None
 
     def run_whois(self, website):
+        if not website or not self.available_tools.get("whois"):
+            return None
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
         res = self.run_cmd(["whois", domain], timeout=25)
+        if res:
+            log(f"  ✅ WHOIS: {len(res)} car")
         return res[:4000] if res else None
 
     def run_wayback(self, website):
+        if not website or not self.available_tools.get("curl"):
+            return None
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
         url = f"https://web.archive.org/cdx/search?url={domain}&output=txt&fl=original&filter=statuscode:200&limit=20"
         res = self.run_cmd(["curl", "-s", url], timeout=20)
         urls = [u for u in res.splitlines() if u.startswith("http")]
+        if urls:
+            log(f"  ✅ Wayback: {len(urls)} URLs")
         return ", ".join(urls) if urls else None
 
     def update_company(self, cid, **fields):
