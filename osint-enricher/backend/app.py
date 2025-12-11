@@ -69,15 +69,19 @@ def start_enrich():
         }
 
         def runner():
-            db_path = os.getenv("DATABASE_PATH", DEFAULT_DB)
-            pipe = OsintPipeline(
-                db_path=db_path,
-                status_ref=pipeline_runner["status"],
-                stop_flag_ref=lambda: pipeline_runner["stop_flag"]
-            )
-            pipe.run(city=city, limit=limit, require_website=require_website)
-            pipeline_runner["status"]["running"] = False
-            pipeline_runner["status"]["finished_at"] = datetime.now(ZoneInfo("Europe/Paris")).isoformat()
+            try:
+                db_path = os.getenv("DATABASE_PATH", DEFAULT_DB)
+                pipe = OsintPipeline(
+                    db_path=db_path,
+                    status_ref=pipeline_runner["status"],
+                    stop_flag_ref=lambda: pipeline_runner["stop_flag"]
+                )
+                pipe.run(city=city, limit=limit, require_website=require_website)
+            finally:
+                # TOUJOURS mettre à jour le statut à la fin
+                pipeline_runner["status"]["running"] = False
+                pipeline_runner["status"]["message"] = "Terminé"
+                pipeline_runner["status"]["finished_at"] = datetime.now(ZoneInfo("Europe/Paris")).isoformat()
 
         th = threading.Thread(target=runner, daemon=True)
         pipeline_runner["thread"] = th
@@ -99,6 +103,23 @@ def stop_enrich():
 @auth.login_required
 def enrich_status():
     with pipeline_lock:
+        # Vérifier si le thread est vraiment en cours
+        if pipeline_runner["thread"] and not pipeline_runner["thread"].is_alive():
+            # Le thread est terminé mais le statut dit encore "running"
+            if pipeline_runner["status"].get("running"):
+                pipeline_runner["status"]["running"] = False
+                pipeline_runner["status"]["message"] = "Terminé"
+        
+        # Si pas de thread ou thread mort et pas de statut, initialiser
+        if not pipeline_runner["thread"] or not pipeline_runner["thread"].is_alive():
+            if not pipeline_runner["status"]:
+                pipeline_runner["status"] = {
+                    "running": False,
+                    "processed": 0,
+                    "total": 0,
+                    "message": "Arrêté"
+                }
+        
         return jsonify(pipeline_runner["status"])
 
 
