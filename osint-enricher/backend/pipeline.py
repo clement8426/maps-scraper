@@ -90,8 +90,8 @@ class OsintPipeline:
 
     def run(self, city=None, limit=50, require_website=True):
         log("=" * 60)
-        log("Pipeline OSINT démarré")
-        log(f"Paramètres: city={city}, limit={limit}, require_website={require_website}")
+        log("🚀 Pipeline OSINT démarré")
+        log(f"📋 Paramètres: city={city}, limit={limit}, require_website={require_website}")
         targets = self.fetch_targets(city, limit, require_website)
         total = len(targets)
         self.status["total"] = total
@@ -99,18 +99,33 @@ class OsintPipeline:
             self.status["message"] = "Aucune cible à enrichir"
             log("⚠️  Aucune cible trouvée avec ces filtres")
             return
+        
+        # Afficher les IDs récupérés pour diagnostic
+        ids_list = [str(row[0]) for row in targets[:10]]
+        if total > 10:
+            ids_preview = ", ".join(ids_list) + f"... (+{total-10} autres)"
+        else:
+            ids_preview = ", ".join(ids_list)
+        
         log(f"✅ {total} cible(s) trouvée(s)")
+        log(f"📊 IDs à enrichir: {ids_preview}")
 
         for idx, (cid, name, website, email) in enumerate(targets, start=1):
             if self.stop_flag():
-                log("Arrêt demandé, sortie propre.")
+                log("⏸️  Arrêt demandé, sortie propre.")
                 self.status["message"] = "Arrêt demandé"
                 break
 
             self.status["processed"] = idx - 1
             self.status["current"] = {"id": cid, "company": name, "website": website}
             self.status["message"] = f"Enrichissement {idx}/{total}"
-            log(f"Enrichissement #{idx}/{total} - {name} ({website})")
+            
+            log("")
+            log("=" * 60)
+            log(f"🔄 Enrichissement #{idx}/{total}")
+            log(f"📌 ID: {cid} | Entreprise: {name}")
+            log(f"🌐 Site: {website}")
+            log("=" * 60)
 
             tech_stack = self.run_whatweb(website)
             emails_osint = self.run_email_tools(website)
@@ -476,9 +491,10 @@ class OsintPipeline:
         set_parts = []
         params = []
         
-        # Log pour debug
-        fields_summary = {k: (v[:50] + '...' if v and len(str(v)) > 50 else v) for k, v in fields.items()}
-        log(f"     [DEBUG] Champs à mettre à jour: {fields_summary}")
+        # Log condensé des champs
+        fields_count = len(fields)
+        non_null_fields = sum(1 for v in fields.values() if v is not None)
+        log(f"   📝 {non_null_fields}/{fields_count} champs avec données")
         
         for k, v in fields.items():
             set_parts.append(f"{k} = ?")
@@ -493,22 +509,32 @@ class OsintPipeline:
         cur = conn.cursor()
         
         # Vérifier d'abord si l'ID existe
+        log(f"   🔍 Vérification de l'existence de l'ID {cid}...")
         cur.execute("SELECT id, company_name FROM companies WHERE id = ?", (cid,))
         existing = cur.fetchone()
         
         if not existing:
-            log(f"     ❌ ERREUR: ID {cid} introuvable dans la BDD !")
+            log(f"   ❌ ERREUR CRITIQUE: ID {cid} INTROUVABLE dans la BDD !")
+            log(f"   💡 L'entreprise a peut-être été supprimée pendant l'enrichissement")
+            
+            # Diagnostic supplémentaire
+            cur.execute("SELECT MIN(id), MAX(id), COUNT(*) FROM companies")
+            min_id, max_id, total = cur.fetchone()
+            log(f"   📊 BDD actuelle: {total} entreprises, IDs de {min_id} à {max_id}")
+            
             conn.close()
             return
+        
+        log(f"   ✅ ID {cid} existe bien: '{existing[1]}'")
         
         sql_query = f"UPDATE companies SET {', '.join(set_parts)} WHERE id = ?"
         cur.execute(sql_query, params)
         rows_affected = cur.rowcount
-        conn.commit()  # ⚡ COMMIT IMMÉDIAT - données sauvegardées maintenant !
+        conn.commit()
         conn.close()
         
         if rows_affected > 0:
-            log(f"     ✅ Sauvegarde réussie : {rows_affected} ligne(s) mise(s) à jour")
+            log(f"   ✅ SAUVEGARDE RÉUSSIE pour ID {cid}")
         else:
-            log(f"     ⚠️  Aucune ligne mise à jour pour ID {cid} (entreprise: {existing[1]})")
+            log(f"   ⚠️  AUCUNE LIGNE MISE À JOUR pour ID {cid} (bizarre car l'ID existe...)")
 
