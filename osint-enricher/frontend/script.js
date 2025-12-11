@@ -55,42 +55,31 @@ async function initEnrichPage() {
   async function refreshStatus() {
     const st = await api.status();
     
-    // Logique anti-clignotement : 
-    // Si on était en cours et qu'on reçoit "arrêté", on attend 2 confirmations
-    if (lastRunningState === true && !st.running) {
-      consecutiveStoppedCount++;
-      if (consecutiveStoppedCount < 2) {
-        // On garde l'état "en cours" jusqu'à confirmation
-        return;
-      }
+    // Détection simple : si processed >= total ET total > 0, c'est terminé
+    const isCompleted = (st.total > 0 && st.processed >= st.total);
+    const isRunning = st.running && !isCompleted;
+    
+    // Mise à jour du statut
+    if (isRunning) {
+      statusEl.textContent = '🔄 En cours';
+      statusEl.className = 'status status-running';
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      lastRunningState = true;
     } else {
-      consecutiveStoppedCount = 0;
+      statusEl.textContent = isCompleted ? '✅ Terminé' : '⏸️ Arrêté';
+      statusEl.className = isCompleted ? 'status status-success' : 'status status-stopped';
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      lastRunningState = false;
     }
     
-    // Si le statut a vraiment changé, on met à jour l'interface
-    const isRunning = st.running || (st.total > 0 && st.processed < st.total);
-    
-    if (lastRunningState !== isRunning) {
-      lastRunningState = isRunning;
-      
-      if (isRunning) {
-        statusEl.textContent = '🔄 En cours';
-        statusEl.className = 'status status-running';
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-      } else {
-        statusEl.textContent = '⏸️ Arrêté';
-        statusEl.className = 'status status-stopped';
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-      }
-    }
-    
-    // Toujours mettre à jour la progression (ça ne clignote pas)
-    if (st.message && isRunning) {
-      progressEl.textContent = `${st.message} (${st.processed || 0}/${st.total || 0})`;
+    // Mise à jour de la progression
+    if (st.total > 0) {
+      const percentage = Math.round((st.processed / st.total) * 100);
+      progressEl.textContent = `${st.processed}/${st.total} (${percentage}%)`;
     } else {
-      progressEl.textContent = `${st.processed || 0} / ${st.total || 0}`;
+      progressEl.textContent = `0/0`;
     }
   }
 
@@ -98,8 +87,17 @@ async function initEnrichPage() {
     try {
       const res = await api.logs();
       if (res.lines && res.lines.length > 0) {
-        logBox.textContent = res.lines.join('');
-        logBox.scrollTop = logBox.scrollHeight;
+        // Filtrer les logs : garder seulement les 100 dernières lignes
+        const recentLines = res.lines.slice(-100);
+        
+        // Formater chaque ligne pour enlever les doublons de timestamp
+        const formattedLines = recentLines.map(line => {
+          // Nettoyer les lignes vides multiples
+          return line.trim() ? line : '';
+        }).filter(line => line !== '');
+        
+        logBox.textContent = formattedLines.join('\n');
+        logBox.scrollTop = logBox.scrollHeight; // Auto-scroll en bas
       } else {
         logBox.textContent = 'Aucun log pour le moment. Les logs apparaîtront ici quand le pipeline sera lancé.';
       }
@@ -139,11 +137,34 @@ async function initEnrichPage() {
     setTimeout(refreshStatus, 1000);
   };
 
+  // Gestion des boutons de logs
+  const toggleLogsBtn = document.getElementById('toggleLogs');
+  const clearLogsBtn = document.getElementById('clearLogs');
+  
+  if (toggleLogsBtn) {
+    toggleLogsBtn.onclick = () => {
+      const logsContainer = logBox.parentElement;
+      if (logsContainer.style.display === 'none') {
+        logsContainer.style.display = 'block';
+        toggleLogsBtn.textContent = 'Masquer';
+      } else {
+        logsContainer.style.display = 'none';
+        toggleLogsBtn.textContent = 'Afficher';
+      }
+    };
+  }
+  
+  if (clearLogsBtn) {
+    clearLogsBtn.onclick = () => {
+      logBox.textContent = 'Logs effacés (les nouveaux logs apparaîtront ici)';
+    };
+  }
+
   await loadCities();
   await refreshStatus();
   await refreshLogs();
-  setInterval(refreshStatus, 5000);
-  setInterval(refreshLogs, 7000);
+  setInterval(refreshStatus, 3000);  // Plus rapide pour détecter la fin
+  setInterval(refreshLogs, 5000);
 }
 
 // ------- DB PAGE -------
