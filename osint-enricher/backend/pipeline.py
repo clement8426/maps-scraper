@@ -258,28 +258,63 @@ class OsintPipeline:
         return result if result else None
 
     def run_email_tools(self, website):
+        """
+        Utilise theHarvester pour trouver des emails
+        Inspiré du script de l'utilisateur avec :
+        - Limite de résultats augmentée (-l 500)
+        - Timeout généreux (300s / 5 minutes)
+        - Extraction exhaustive avec regex
+        """
         if not website:
             return None
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
-        out = []
-        
-        # theHarvester (peut retourner code non-zéro si aucun résultat)
-        if self.available_tools.get("theHarvester"):
-            harvest = self.run_cmd(["theHarvester", "-d", domain, "-b", "all"], allow_nonzero=True)
-            if harvest:
-                log(f"  ✅ theHarvester: OK")
-            out.append(harvest)
-        
-        # Regex extraction
         emails = set()
-        for blob in out:
-            if blob:
-                for m in re.findall(r"[a-zA-Z0-9._%+-]+@" + re.escape(domain), blob):
-                    emails.add(m.lower())
+        
+        # theHarvester avec toutes les sources et limite élevée
+        if self.available_tools.get("theHarvester"):
+            # Commande complète : -d domaine, -b toutes sources, -l limite résultats
+            cmd = [
+                "theHarvester",
+                "-d", domain,
+                "-b", "all",        # Toutes les sources (google, bing, linkedin, etc.)
+                "-l", "500"         # Limite de 500 résultats par source
+            ]
+            
+            log(f"  🔍 theHarvester: scan de {domain} (toutes sources, limit=500)...")
+            
+            # Exécuter avec timeout généreux (5 minutes comme dans votre script)
+            result = self.run_cmd(cmd, allow_nonzero=True, timeout=300)
+            
+            if result:
+                # Extraction exhaustive : tous les emails trouvés dans la sortie
+                all_emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", result)
+                
+                # Filtrer pour ne garder que les emails du domaine ciblé
+                domain_emails = [e.lower() for e in all_emails if domain.lower() in e.lower()]
+                
+                # Ajouter aussi les emails du sous-domaine (ex: subdomain.example.com)
+                for email in all_emails:
+                    email_lower = email.lower()
+                    # Extraire le domaine de l'email
+                    email_domain = email_lower.split('@')[1] if '@' in email_lower else ''
+                    # Si le domaine principal est dans le domaine de l'email
+                    if domain.lower() in email_domain:
+                        emails.add(email_lower)
+                
+                # Statistiques
+                if emails:
+                    log(f"  ✅ theHarvester: {len(emails)} email(s) du domaine {domain}")
+                else:
+                    # Afficher les emails trouvés même s'ils ne sont pas du domaine
+                    if all_emails:
+                        other_emails = [e for e in all_emails if domain.lower() not in e.lower()]
+                        log(f"  ℹ️  theHarvester: {len(all_emails)} email(s) total, {len(other_emails)} externe(s)")
+                    else:
+                        log(f"  ℹ️  theHarvester: scan terminé (aucun email trouvé)")
+            else:
+                log(f"  ⚠️  theHarvester: aucun résultat")
         
         result = ", ".join(sorted(emails)) if emails else None
-        if result:
-            log(f"  ✅ Emails: {len(emails)}")
         return result
 
     def run_pdf_hunt(self, website):
@@ -288,26 +323,78 @@ class OsintPipeline:
         return f"See dorks manually for {domain}"
 
     def run_subfinder(self, website):
+        """
+        Utilise subfinder pour trouver des sous-domaines
+        Options : -silent (pas de banner), -all (toutes les sources), -recursive (recherche récursive)
+        """
         if not website or not self.available_tools.get("subfinder"):
             return None
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
-        res = self.run_cmd(["subfinder", "-d", domain, "-silent"])
+        
+        # Commande avec options avancées
+        cmd = [
+            "subfinder",
+            "-d", domain,
+            "-silent",          # Pas de banner
+            "-all",             # Toutes les sources disponibles
+            "-timeout", "60"    # Timeout de 60s par source
+        ]
+        
+        log(f"  🔍 Subfinder: scan de {domain} (toutes sources)...")
+        res = self.run_cmd(cmd, timeout=180)  # Timeout global de 3 minutes
+        
         if not res:
+            log(f"  ℹ️  Subfinder: aucun sous-domaine trouvé")
             return None
+        
         subs = [line.strip() for line in res.splitlines() if line.strip()]
+        
         if subs:
-            log(f"  ✅ Subfinder: {len(subs)} subs")
-        return ", ".join(subs[:50]) if subs else None
+            # Dédupliquer et trier
+            unique_subs = sorted(set(subs))
+            log(f"  ✅ Subfinder: {len(unique_subs)} sous-domaine(s) unique(s)")
+            # Limiter à 100 sous-domaines pour éviter des strings trop longues en BDD
+            return ", ".join(unique_subs[:100]) if unique_subs else None
+        
+        return None
 
     def run_whois(self, website):
+        """
+        Exécute whois sur le domaine
+        whois peut retourner un code non-zéro si pas de résultat
+        """
         if not website or not self.available_tools.get("whois"):
             return None
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
+        
         # whois peut retourner code 2 si le domaine n'existe pas ou n'est pas trouvé
-        res = self.run_cmd(["whois", domain], timeout=25, allow_nonzero=True)
-        if res:
-            log(f"  ✅ WHOIS: OK")
-        return res[:4000] if res else None
+        res = self.run_cmd(["whois", domain], timeout=30, allow_nonzero=True)
+        
+        if res and len(res.strip()) > 50:  # Au moins 50 caractères pour être valide
+            # Extraire les infos importantes
+            lines = res.splitlines()
+            important_lines = []
+            for line in lines:
+                lower_line = line.lower()
+                # Garder les lignes avec des infos utiles
+                if any(keyword in lower_line for keyword in [
+                    'registrar:', 'creation date:', 'expiry date:', 'updated date:',
+                    'name server:', 'status:', 'organization:', 'registrant'
+                ]):
+                    important_lines.append(line.strip())
+            
+            # Si on a des infos importantes, les utiliser, sinon garder tout
+            if important_lines:
+                result = "\n".join(important_lines[:30])  # Max 30 lignes importantes
+                log(f"  ✅ WHOIS: {len(important_lines)} info(s) extraite(s)")
+            else:
+                result = res[:4000]  # Limiter à 4000 caractères
+                log(f"  ✅ WHOIS: {len(res)} caractères")
+            
+            return result
+        else:
+            log(f"  ℹ️  WHOIS: pas de résultat pour {domain}")
+            return None
 
     def run_wayback(self, website):
         if not website or not self.available_tools.get("curl"):
@@ -351,6 +438,11 @@ class OsintPipeline:
     def update_company(self, cid, **fields):
         set_parts = []
         params = []
+        
+        # Log pour debug
+        fields_summary = {k: (v[:50] + '...' if v and len(str(v)) > 50 else v) for k, v in fields.items()}
+        log(f"     [DEBUG] Champs à mettre à jour: {fields_summary}")
+        
         for k, v in fields.items():
             set_parts.append(f"{k} = ?")
             params.append(v)
@@ -362,7 +454,12 @@ class OsintPipeline:
 
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
-        cur.execute(f"UPDATE companies SET {', '.join(set_parts)} WHERE id = ?", params)
+        sql_query = f"UPDATE companies SET {', '.join(set_parts)} WHERE id = ?"
+        log(f"     [DEBUG] SQL: UPDATE companies SET ... WHERE id = {cid}")
+        cur.execute(sql_query, params)
+        rows_affected = cur.rowcount
         conn.commit()
         conn.close()
+        
+        log(f"     [DEBUG] {rows_affected} ligne(s) mise(s) à jour dans {self.db_path}")
 
