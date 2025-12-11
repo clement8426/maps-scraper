@@ -400,7 +400,7 @@ def scrape_gmaps_urls(search_term, city, page, browser, context):
             # Puis aller sur Maps
             page.goto("https://www.google.com/maps", timeout=90000, wait_until="networkidle")
             random_delay(3, 5)
-        
+            
             # Vérifier que la page est toujours ouverte
             try:
                 _ = page.url
@@ -1235,9 +1235,9 @@ def main():
                                     is_alive, browser, context, page = is_browser_alive(browser, context, page)
                                     if not is_alive or not page:
                                         print("    ⚠️  Page fermée, recréation...")
-                                        try:
+                                    try:
                                             browser, context, page = recreate_browser_context_internal(p, browser)
-                                        except:
+                                    except:
                                             print("    ❌ Impossible de recréer, skip cette entreprise")
                                             addresses.append(None)
                                             phones.append(None)

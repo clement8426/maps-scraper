@@ -79,7 +79,7 @@ class OsintPipeline:
             SELECT id, company_name, website, email
             FROM companies
             {where_clause}
-            ORDER BY updated_at DESC
+            ORDER BY id ASC
             LIMIT ?
         """
         params.append(limit)
