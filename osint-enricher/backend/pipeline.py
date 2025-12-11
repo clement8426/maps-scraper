@@ -134,7 +134,9 @@ class OsintPipeline:
             whois_raw = self.run_whois(website)
             wayback_urls = self.run_wayback(website)
 
-            log(f"  → Sauvegarde en BDD pour {name}...")
+            log("")
+            log(f"💾 Sauvegarde en BDD...")
+            log(f"   ID: {cid} | Entreprise: {name}")
             self.update_company(
                 cid,
                 tech_stack=tech_stack,
@@ -144,7 +146,7 @@ class OsintPipeline:
                 whois_raw=whois_raw,
                 wayback_urls=wayback_urls,
             )
-            log(f"  ✅ {name} terminé et sauvegardé en BDD")
+            log(f"✅ ID {cid} - {name} terminé et sauvegardé en BDD")
             time.sleep(1.0)
 
         self.status["processed"] = min(self.status.get("processed", 0), total)
