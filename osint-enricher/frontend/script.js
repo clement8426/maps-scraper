@@ -134,17 +134,31 @@ async function initDbPage() {
     tableBody.innerHTML = '';
     data.items.forEach((r) => {
       const tr = document.createElement('tr');
+      
+      // Fonction pour tronquer et formater le texte
+      const formatText = (text, maxLength = 100) => {
+        if (!text) return '—';
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
+      };
+      
+      // Formater les emails OSINT (séparer par virgules)
+      const formatEmails = (emails) => {
+        if (!emails) return '—';
+        return emails.split(',').map(e => e.trim()).join(', ');
+      };
+      
       tr.innerHTML = `
-        <td title="${r.company_name || ''}">${r.company_name || ''}</td>
-        <td>${r.city || ''}</td>
-        <td>${r.website ? `<a href="${r.website}" target="_blank" title="${r.website}">${r.website.substring(0, 30)}...</a>` : ''}</td>
-        <td title="${r.email || ''}">${r.email || ''}</td>
-        <td class="clickable" title="Cliquer pour voir le détail">${r.tech_stack || '—'}</td>
-        <td title="${r.emails_osint || ''}">${r.emails_osint || '—'}</td>
-        <td class="clickable" title="Cliquer pour voir le détail">${r.subdomains ? '✓ (' + (r.subdomains.split(',').length) + ')' : '—'}</td>
-        <td class="clickable" title="Cliquer pour voir le détail">${r.wayback_urls ? '✓ (' + (r.wayback_urls.split(',').length) + ')' : '—'}</td>
+        <td title="${r.company_name || ''}">${r.company_name || '—'}</td>
+        <td>${r.city || '—'}</td>
+        <td>${r.website ? `<a href="${r.website}" target="_blank" title="${r.website}">${formatText(r.website.replace(/^https?:\/\//, ''), 25)}</a>` : '—'}</td>
+        <td title="${r.email || ''}">${formatText(r.email || '', 30)}</td>
+        <td class="clickable" title="Cliquer pour voir le détail complet">${formatText(r.tech_stack || '', 80)}</td>
+        <td title="${r.emails_osint || ''}">${formatText(formatEmails(r.emails_osint), 50)}</td>
+        <td class="clickable" title="Cliquer pour voir le détail complet">${r.subdomains ? `✓ ${r.subdomains.split(',').length} sub` : '—'}</td>
+        <td class="clickable" title="Cliquer pour voir le détail complet">${r.wayback_urls ? `✓ ${r.wayback_urls.split(',').length} URLs` : '—'}</td>
         <td><span class="badge ${r.osint_status === 'Done' ? 'badge-success' : 'badge-muted'}">${r.osint_status || 'N/A'}</span></td>
-        <td>${r.osint_updated_at ? new Date(r.osint_updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' }).split(',')[0] : ''}</td>
+        <td>${r.osint_updated_at ? new Date(r.osint_updated_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
       `;
       
       // Ajouter les event listeners pour les clics

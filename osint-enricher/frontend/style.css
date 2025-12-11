@@ -103,10 +103,49 @@ header {
 }
 
 .table-wrapper {
-  max-height: 600px;
+  max-height: 70vh;
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
+  position: relative;
+}
+
+/* Scrollbar personnalisée pour le wrapper */
+.table-wrapper::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 6px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Scrollbar personnalisée pour les cellules */
+.table td::-webkit-scrollbar {
+  width: 6px;
+}
+
+.table td::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table td::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.table td::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .table {
@@ -128,22 +167,84 @@ header {
   border-bottom: 1px solid var(--border);
   text-align: left;
   font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  vertical-align: top;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-height: 80px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  line-height: 1.4;
 }
 
 .table th {
   font-weight: 700;
   background: #f8fafc;
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  max-height: none;
+  overflow: visible;
 }
 
 .table td {
   cursor: pointer;
+  white-space: normal;
+  display: table-cell;
 }
 
 .table td:hover {
   background: #f1f5f9;
+}
+
+/* Colonnes spécifiques avec largeur fixe */
+.table td:nth-child(1), .table th:nth-child(1) { /* Entreprise */
+  max-width: 150px;
+  min-width: 150px;
+}
+
+.table td:nth-child(2), .table th:nth-child(2) { /* Ville */
+  max-width: 100px;
+  min-width: 100px;
+}
+
+.table td:nth-child(3), .table th:nth-child(3) { /* Site */
+  max-width: 150px;
+  min-width: 150px;
+}
+
+.table td:nth-child(4), .table th:nth-child(4) { /* Email Base */
+  max-width: 150px;
+  min-width: 150px;
+}
+
+.table td:nth-child(5), .table th:nth-child(5) { /* Stack Tech */
+  max-width: 200px;
+  min-width: 200px;
+}
+
+.table td:nth-child(6), .table th:nth-child(6) { /* Emails OSINT */
+  max-width: 150px;
+  min-width: 150px;
+}
+
+.table td:nth-child(7), .table th:nth-child(7) { /* Sous-domaines */
+  max-width: 150px;
+  min-width: 150px;
+}
+
+.table td:nth-child(8), .table th:nth-child(8) { /* Wayback URLs */
+  max-width: 150px;
+  min-width: 150px;
+}
+
+.table td:nth-child(9), .table th:nth-child(9) { /* Status */
+  max-width: 80px;
+  min-width: 80px;
+}
+
+.table td:nth-child(10), .table th:nth-child(10) { /* Maj OSINT */
+  max-width: 120px;
+  min-width: 120px;
 }
 
 .truncated {
