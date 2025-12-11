@@ -267,32 +267,63 @@ def init_database():
     print(f"✅ Base de données initialisée: {DATABASE_FILE}")
 
 def save_to_database(df):
-    """Sauvegarde les données dans la base SQLite"""
+    """Sauvegarde les données dans la base SQLite (avec UPDATE pour préserver les IDs)"""
     conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
     
     for _, row in df.iterrows():
         try:
-            conn.execute('''
-                INSERT OR REPLACE INTO companies 
-                (company_name, maps_link, city, tag, address, phone, website, 
-                 rating, reviews_count, email, social_links, status, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (
-                row.get('Company'),
-                row.get('Maps_Link'),
-                row.get('City'),
-                row.get('Tag'),
-                row.get('Address'),
-                row.get('Phone'),
-                row.get('Website'),
-                row.get('Rating'),
-                row.get('Reviews_Count'),
-                row.get('Email'),
-                row.get('Social_Links'),
-                row.get('Status')
-            ))
+            maps_link = row.get('Maps_Link')
+            
+            # Vérifier si l'entreprise existe déjà
+            cursor.execute('SELECT id FROM companies WHERE maps_link = ?', (maps_link,))
+            existing = cursor.fetchone()
+            
+            if existing:
+                # UPDATE : Met à jour sans changer l'ID (préserve les données OSINT)
+                cursor.execute('''
+                    UPDATE companies 
+                    SET company_name = ?, city = ?, tag = ?, address = ?, phone = ?,
+                        website = ?, rating = ?, reviews_count = ?, email = ?, 
+                        social_links = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE maps_link = ?
+                ''', (
+                    row.get('Company'),
+                    row.get('City'),
+                    row.get('Tag'),
+                    row.get('Address'),
+                    row.get('Phone'),
+                    row.get('Website'),
+                    row.get('Rating'),
+                    row.get('Reviews_Count'),
+                    row.get('Email'),
+                    row.get('Social_Links'),
+                    row.get('Status'),
+                    maps_link
+                ))
+            else:
+                # INSERT : Nouvelle entreprise
+                cursor.execute('''
+                    INSERT INTO companies 
+                    (company_name, maps_link, city, tag, address, phone, website, 
+                     rating, reviews_count, email, social_links, status, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (
+                    row.get('Company'),
+                    maps_link,
+                    row.get('City'),
+                    row.get('Tag'),
+                    row.get('Address'),
+                    row.get('Phone'),
+                    row.get('Website'),
+                    row.get('Rating'),
+                    row.get('Reviews_Count'),
+                    row.get('Email'),
+                    row.get('Social_Links'),
+                    row.get('Status')
+                ))
         except Exception as e:
-            print(f"    ⚠️  Erreur insertion BDD: {e}")
+            print(f"    ⚠️  Erreur BDD: {e}")
     
     conn.commit()
     conn.close()
