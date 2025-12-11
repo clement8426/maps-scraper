@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
+# Note: pas de 'set -e' pour continuer même si certains outils échouent
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE_NAME="osint-enricher"
@@ -18,28 +19,54 @@ fi
 
 apt-get update
 apt-get install -y python3-venv python3-dev build-essential \
-  whatweb pdfgrep whois curl git golang-go
+  whatweb pdfgrep whois curl git golang-go python3-pip
 
-# Installer theHarvester via pip (global)
-pip3 install theHarvester --break-system-packages || python3 -m pip install theHarvester
+echo "📦 Installation des outils OSINT..."
 
-# Installer subfinder (Go)
+# Installer theHarvester via pip (global) - continuer même si échec
+if ! command -v theHarvester &> /dev/null; then
+  echo "  → Installation theHarvester..."
+  pip3 install theHarvester --break-system-packages 2>/dev/null || \
+  python3 -m pip install theHarvester --user 2>/dev/null || \
+  echo "  ⚠️  theHarvester non installé (optionnel)"
+else
+  echo "  ✅ theHarvester déjà installé"
+fi
+
+# Installer subfinder (Go) - continuer même si échec
 if ! command -v subfinder &> /dev/null; then
-  go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-  # Ajouter au PATH si nécessaire
+  echo "  → Installation subfinder..."
+  export GOPATH="/home/${USER_NAME}/go"
+  export PATH="$PATH:/home/${USER_NAME}/go/bin"
+  mkdir -p "/home/${USER_NAME}/go/bin"
+  su - ${USER_NAME} -c "go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest" 2>/dev/null || \
+  echo "  ⚠️  subfinder non installé (optionnel)"
+  # Ajouter au PATH si installé
   if [[ -f "/home/${USER_NAME}/go/bin/subfinder" ]]; then
-    ln -sf "/home/${USER_NAME}/go/bin/subfinder" /usr/local/bin/subfinder || true
+    ln -sf "/home/${USER_NAME}/go/bin/subfinder" /usr/local/bin/subfinder 2>/dev/null || true
+    echo "  ✅ subfinder installé"
   fi
+else
+  echo "  ✅ subfinder déjà installé"
 fi
 
-# Installer amass (Go)
+# Installer amass (Go) - continuer même si échec
 if ! command -v amass &> /dev/null; then
-  go install -v github.com/owasp-amass/amass/v4/...@master
-  # Ajouter au PATH si nécessaire
+  echo "  → Installation amass..."
+  export GOPATH="/home/${USER_NAME}/go"
+  export PATH="$PATH:/home/${USER_NAME}/go/bin"
+  su - ${USER_NAME} -c "go install -v github.com/owasp-amass/amass/v4/...@master" 2>/dev/null || \
+  echo "  ⚠️  amass non installé (optionnel)"
+  # Ajouter au PATH si installé
   if [[ -f "/home/${USER_NAME}/go/bin/amass" ]]; then
-    ln -sf "/home/${USER_NAME}/go/bin/amass" /usr/local/bin/amass || true
+    ln -sf "/home/${USER_NAME}/go/bin/amass" /usr/local/bin/amass 2>/dev/null || true
+    echo "  ✅ amass installé"
   fi
+else
+  echo "  ✅ amass déjà installé"
 fi
+
+echo "✅ Installation outils OSINT terminée (certains peuvent être optionnels)"
 
 cd "$APP_DIR"
 
