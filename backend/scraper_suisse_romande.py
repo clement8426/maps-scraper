@@ -391,16 +391,16 @@ def scrape_gmaps_urls(search_term, city, page, browser, context):
     print(f"--- Recherche : {search_term} à {city} ---")
     
     try:
-            # Aller sur Google Maps avec une approche plus discrète
-            try:
-                # D'abord aller sur Google.com pour paraître plus naturel
-                page.goto("https://www.google.com", timeout=90000, wait_until="domcontentloaded")
-                random_delay(2, 4)
-                
-                # Puis aller sur Maps
-                page.goto("https://www.google.com/maps", timeout=90000, wait_until="networkidle")
-                random_delay(3, 5)
+        # Aller sur Google Maps avec une approche plus discrète
+        try:
+            # D'abord aller sur Google.com pour paraître plus naturel
+            page.goto("https://www.google.com", timeout=90000, wait_until="domcontentloaded")
+            random_delay(2, 4)
             
+            # Puis aller sur Maps
+            page.goto("https://www.google.com/maps", timeout=90000, wait_until="networkidle")
+            random_delay(3, 5)
+        
             # Vérifier que la page est toujours ouverte
             try:
                 _ = page.url
