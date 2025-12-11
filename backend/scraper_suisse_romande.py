@@ -74,10 +74,14 @@ DATABASE_FILE = "companies.db"
 BROWSER_TYPE = "firefox"  # Changez en "chromium" si vous préférez
 
 # Délais aléatoires pour simuler un humain
-MIN_DELAY = 1.5
-MAX_DELAY = 4.0
-MIN_PAGE_DELAY = 0.5
-MAX_PAGE_DELAY = 2.0
+MIN_DELAY = 2.0
+MAX_DELAY = 5.0
+MIN_PAGE_DELAY = 1.0
+MAX_PAGE_DELAY = 3.0
+
+# Configuration de retry
+MAX_RETRIES = 3
+RETRY_DELAY = 5  # secondes entre les retries
 
 # User agents rotatifs (plus de variété)
 USER_AGENTS = [
@@ -104,6 +108,134 @@ USER_AGENTS = [
 def random_delay(min_sec=MIN_DELAY, max_sec=MAX_DELAY):
     """Délai aléatoire pour simuler un comportement humain"""
     time.sleep(random.uniform(min_sec, max_sec))
+
+def retry_with_backoff(func, max_retries=MAX_RETRIES, delay=RETRY_DELAY, *args, **kwargs):
+    """Exécute une fonction avec retry automatique en cas d'échec"""
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise  # Dernière tentative, on propage l'erreur
+            error_str = str(e).lower()
+            if "closed" in error_str or "target" in error_str or "browser" in error_str:
+                # Erreur critique, on ne retry pas
+                raise
+            print(f"    ⚠️  Tentative {attempt + 1}/{max_retries} échouée: {e}")
+            print(f"    ⏳ Nouvelle tentative dans {delay} secondes...")
+            time.sleep(delay)
+            delay *= 1.5  # Backoff exponentiel
+    return None
+
+def is_browser_alive(browser, context, page):
+    """Vérifie si le navigateur, contexte et page sont toujours actifs"""
+    try:
+        if browser and not browser.is_connected():
+            return False, None, None, None
+        if context and context.pages:
+            if page and page.url:
+                return True, browser, context, page
+        return True, browser, context, None
+    except:
+        return False, None, None, None
+
+def recreate_browser_context_internal(p, browser=None):
+    """Recrée le navigateur et le contexte en cas de problème (fonction interne)"""
+    try:
+        if browser:
+            try:
+                browser.close()
+            except:
+                pass
+    except:
+        pass
+    
+    try:
+        if BROWSER_TYPE == "firefox":
+            browser = p.firefox.launch(headless=True)
+        else:
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                ]
+            )
+        
+        if BROWSER_TYPE == "firefox":
+            context = browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                locale='fr-CH',
+                timezone_id='Europe/Zurich',
+                geolocation={'latitude': 46.2044, 'longitude': 6.1432},
+                permissions=['geolocation']
+            )
+        else:
+            context = browser.new_context(
+                user_agent=random.choice(USER_AGENTS),
+                viewport={'width': 1920, 'height': 1080},
+                locale='fr-CH',
+                timezone_id='Europe/Zurich',
+                permissions=['geolocation'],
+                geolocation={'latitude': 46.2044, 'longitude': 6.1432},
+                color_scheme='light'
+            )
+            
+            context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                window.chrome = {
+                    runtime: {}
+                };
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['fr-CH', 'fr', 'en']
+                });
+            """)
+        
+        page = context.new_page()
+        print("  ✅ Navigateur et contexte recréés avec succès")
+        return browser, context, page
+    except Exception as e:
+        print(f"  ❌ Erreur lors de la recréation: {e}")
+        raise
+
+def check_google_block(page):
+    """Vérifie si Google a bloqué le bot"""
+    try:
+        url = page.url
+        content = page.content()
+        
+        # Signes de blocage
+        block_indicators = [
+            "unusual traffic",
+            "automated queries",
+            "captcha",
+            "robot",
+            "verify you're not a robot",
+            "not a robot"
+        ]
+        
+        content_lower = content.lower()
+        for indicator in block_indicators:
+            if indicator in content_lower:
+                print(f"  ⚠️  Blocage Google détecté: {indicator}")
+                return True
+        
+        # Vérifier l'URL
+        if "sorry" in url.lower() or "captcha" in url.lower():
+            print(f"  ⚠️  Page de blocage détectée: {url}")
+            return True
+            
+        return False
+    except:
+        return False
 
 def init_database():
     """Initialise la base de données SQLite"""
@@ -258,16 +390,16 @@ def scrape_gmaps_urls(search_term, city, page, browser, context):
     
     print(f"--- Recherche : {search_term} à {city} ---")
     
-    try:
-        # Aller sur Google Maps avec une approche plus discrète
         try:
-            # D'abord aller sur Google.com pour paraître plus naturel
-            page.goto("https://www.google.com", timeout=60000, wait_until="domcontentloaded")
-            random_delay(2, 4)
-            
-            # Puis aller sur Maps
-            page.goto("https://www.google.com/maps", timeout=60000, wait_until="networkidle")
-            random_delay(3, 5)
+            # Aller sur Google Maps avec une approche plus discrète
+            try:
+                # D'abord aller sur Google.com pour paraître plus naturel
+                page.goto("https://www.google.com", timeout=90000, wait_until="domcontentloaded")
+                random_delay(2, 4)
+                
+                # Puis aller sur Maps
+                page.goto("https://www.google.com/maps", timeout=90000, wait_until="networkidle")
+                random_delay(3, 5)
             
             # Vérifier que la page est toujours ouverte
             try:
@@ -284,7 +416,7 @@ def scrape_gmaps_urls(search_term, city, page, browser, context):
                 pass
             try:
                 page = context.new_page()
-                page.goto("https://www.google.com/maps", timeout=60000, wait_until="networkidle")
+                page.goto("https://www.google.com/maps", timeout=90000, wait_until="networkidle")
                 random_delay(2, 3)
             except:
                 print("  ❌ Impossible de recréer la page")
@@ -331,7 +463,7 @@ def scrape_gmaps_urls(search_term, city, page, browser, context):
                 current_url = page.url
                 if "consent.google.com" in current_url:
                     print("  ⚠️  Toujours sur consentement, nouvelle tentative...")
-                    page.goto("https://www.google.com/maps", timeout=60000, wait_until="networkidle")
+                    page.goto("https://www.google.com/maps", timeout=90000, wait_until="networkidle")
                     random_delay(2, 3)
         except Exception as e:
             print(f"  ⚠️  Erreur gestion consentement: {e}")
@@ -375,7 +507,7 @@ def scrape_gmaps_urls(search_term, city, page, browser, context):
         
         # Attendre le chargement de la liste
         try:
-            page.wait_for_selector('div[role="feed"]', timeout=20000)
+            page.wait_for_selector('div[role="feed"]', timeout=30000)
         except PlaywrightTimeout:
             print(f"  ⚠️  Timeout: Pas de résultats pour {query}")
             return leads
@@ -557,7 +689,7 @@ def enrich_maps_details(page, maps_link):
         }
     
     try:
-        page.goto(maps_link, timeout=20000, wait_until="networkidle")
+        page.goto(maps_link, timeout=30000, wait_until="networkidle")
         random_delay(2, 3)
         
         # Gérer le consentement si présent
@@ -582,7 +714,7 @@ def enrich_maps_details(page, maps_link):
         
         # Attendre que la page soit complètement chargée
         try:
-            page.wait_for_load_state("networkidle", timeout=15000)
+            page.wait_for_load_state("networkidle", timeout=25000)
         except:
             pass
         
@@ -611,9 +743,9 @@ def enrich_maps_details(page, maps_link):
             print(f"    ⚠️  Texte de la page trop court ({len(page_text)} caractères), tentative alternative...")
             try:
                 # Essayer d'attendre plus longtemps
-                page.wait_for_load_state("networkidle", timeout=20000)
+                page.wait_for_load_state("networkidle", timeout=30000)
                 random_delay(3, 5)
-                page_text = page.locator('body').inner_text(timeout=10000)
+                page_text = page.locator('body').inner_text(timeout=15000)
             except:
                 pass
         
@@ -840,11 +972,11 @@ def enrich_company_data_playwright(page, website_url):
     
     try:
         # Visiter le site
-        page.goto(website_url, timeout=15000, wait_until="networkidle")
+        page.goto(website_url, timeout=25000, wait_until="networkidle")
         random_delay(2, 3)
         
         # Attendre que le contenu se charge (important pour React/SPA)
-        page.wait_for_load_state("networkidle", timeout=10000)
+        page.wait_for_load_state("networkidle", timeout=15000)
         
         # Extraire le contenu HTML
         html_content = page.content()
@@ -884,7 +1016,7 @@ def enrich_company_data_playwright(page, website_url):
         # Visiter max 2 pages de contact
         for link in contact_links[:2]:
             try:
-                page.goto(link, timeout=10000, wait_until="networkidle")
+                page.goto(link, timeout=20000, wait_until="networkidle")
                 random_delay(1, 2)
                 
                 contact_html = page.content()
@@ -1032,36 +1164,44 @@ def main():
                         print("=" * 60)
                         
                         try:
-                            # Vérifier que le navigateur est toujours ouvert
-                            try:
-                                _ = browser.is_connected()
-                            except:
-                                print("  ❌ Navigateur fermé, impossible de continuer")
-                                raise Exception("Browser closed")
+                            # Vérifier régulièrement l'état du navigateur
+                            is_alive, browser, context, page = is_browser_alive(browser, context, page)
                             
-                            # Créer une nouvelle page pour chaque recherche
-                            try:
-                                if page:
+                            if not is_alive:
+                                print("  ⚠️  Navigateur fermé, recréation...")
+                                try:
+                                    browser, context, page = recreate_browser_context_internal(p, browser)
+                                    random_delay(3, 5)  # Pause après recréation
+                                except Exception as rec_error:
+                                    print(f"  ❌ Impossible de recréer le navigateur: {rec_error}")
+                                    print("  ⏸️  Pause de 30 secondes avant nouvelle tentative...")
+                                    time.sleep(30)
                                     try:
-                                        _ = page.url
+                                        browser, context, page = recreate_browser_context_internal(p)
                                     except:
-                                        page = None
-                            except:
-                                page = None
+                                        print("  ❌ Échec définitif, arrêt du scraping")
+                                        raise
                             
+                            # Vérifier si la page existe, sinon en créer une nouvelle
                             if not page:
-                                print("  ⚠️  Création d'une nouvelle page...")
                                 try:
                                     page = context.new_page()
+                                    print("  ✅ Nouvelle page créée")
                                 except:
-                                    print("  ⚠️  Contexte fermé, recréation...")
-                                    context = browser.new_context(
-                                        user_agent=random.choice(USER_AGENTS),
-                                        viewport={'width': 1920, 'height': 1080},
-                                        locale='fr-CH',
-                                        timezone_id='Europe/Zurich'
-                                    )
-                                    page = context.new_page()
+                                    print("  ⚠️  Contexte fermé, recréation complète...")
+                                    browser, context, page = recreate_browser_context_internal(p, browser)
+                                    random_delay(2, 4)
+                            
+                            # Vérifier les blocages Google avant de continuer
+                            try:
+                                if check_google_block(page):
+                                    print("  ⚠️  Blocage Google détecté, pause de 60 secondes...")
+                                    time.sleep(60)
+                                    # Recréer le navigateur pour éviter le blocage
+                                    browser, context, page = recreate_browser_context_internal(p, browser)
+                                    random_delay(5, 10)
+                            except:
+                                pass  # Si on ne peut pas vérifier, on continue quand même
                             
                             # ===== PHASE 1: HARVESTING =====
                             print(f"\n📡 PHASE 1: HARVESTING - {keyword} à {city}")
@@ -1092,13 +1232,38 @@ def main():
                                     print(f"  🔍 {row['Company']} ({idx+1}/{len(df_search)})")
                                     
                                     # Vérifier que la page est toujours ouverte
-                                    try:
-                                        _ = page.url
-                                    except:
+                                    is_alive, browser, context, page = is_browser_alive(browser, context, page)
+                                    if not is_alive or not page:
                                         print("    ⚠️  Page fermée, recréation...")
-                                        page = context.new_page()
+                                        try:
+                                            browser, context, page = recreate_browser_context_internal(p, browser)
+                                        except:
+                                            print("    ❌ Impossible de recréer, skip cette entreprise")
+                                            addresses.append(None)
+                                            phones.append(None)
+                                            websites.append(None)
+                                            ratings.append(None)
+                                            reviews_counts.append(None)
+                                            continue
                                     
-                                    details = enrich_maps_details(page, row.get('Maps_Link'))
+                                    # Utiliser retry pour l'enrichissement
+                                    try:
+                                        details = retry_with_backoff(
+                                            enrich_maps_details,
+                                            max_retries=2,
+                                            delay=3,
+                                            page=page,
+                                            maps_link=row.get('Maps_Link')
+                                        )
+                                    except Exception as enrich_error:
+                                        print(f"    ⚠️  Erreur enrichissement après retry: {enrich_error}")
+                                        details = {
+                                            "Address": None,
+                                            "Phone": None,
+                                            "Website": None,
+                                            "Rating": None,
+                                            "Reviews_Count": None
+                                        }
                                     
                                     # Afficher ce qui a été trouvé
                                     found_items = []
@@ -1150,7 +1315,25 @@ def main():
                                 if pd.notna(website) and website:
                                     try:
                                         print(f"  🔎 {row['Company']} ({idx+1}/{len(df_search)})")
-                                        emails, socials, status = enrich_company_data_playwright(page, website)
+                                        
+                                        # Vérifier l'état avant le mining
+                                        is_alive, browser, context, page = is_browser_alive(browser, context, page)
+                                        if not is_alive or not page:
+                                            print("    ⚠️  Navigateur fermé, recréation...")
+                                            browser, context, page = recreate_browser_context_internal(p, browser)
+                                        
+                                        # Utiliser retry pour le mining
+                                        try:
+                                            emails, socials, status = retry_with_backoff(
+                                                enrich_company_data_playwright,
+                                                max_retries=2,
+                                                delay=5,
+                                                page=page,
+                                                website_url=website
+                                            )
+                                        except:
+                                            emails, socials, status = None, None, "Error"
+                                        
                                         final_emails.append(emails)
                                         final_socials.append(socials)
                                         final_status.append(status)
@@ -1209,15 +1392,37 @@ def main():
                             random_delay(3, 6)  # Pause entre combinaisons
                             
                         except Exception as e:
-                            error_msg = str(e)
-                            print(f"  ⚠️  Erreur sur {city} - {keyword}: {error_msg}")
+                            error_msg = str(e).lower()
+                            print(f"  ⚠️  Erreur sur {city} - {keyword}: {e}")
                             
-                            # Si le navigateur est fermé, on ne peut pas continuer
-                            if "closed" in error_msg.lower() or "browser" in error_msg.lower():
-                                print("  ❌ Navigateur fermé, arrêt du scraping")
-                                raise
+                            # Si le navigateur est fermé, essayer de le recréer
+                            if "closed" in error_msg or "browser" in error_msg or "target" in error_msg:
+                                print("  ⚠️  Navigateur fermé, tentative de récupération...")
+                                try:
+                                    browser, context, page = recreate_browser_context_internal(p, browser)
+                                    print("  ✅ Navigateur recréé, on continue")
+                                    random_delay(5, 10)
+                                    # Ne pas marquer comme complété, on réessaiera
+                                    continue
+                                except Exception as rec_error:
+                                    print(f"  ❌ Impossible de recréer le navigateur: {rec_error}")
+                                    print("  ⏸️  Pause de 60 secondes avant nouvelle tentative...")
+                                    time.sleep(60)
+                                    try:
+                                        browser, context, page = recreate_browser_context_internal(p)
+                                        print("  ✅ Navigateur recréé après pause, on continue")
+                                        continue
+                                    except:
+                                        print("  ❌ Échec définitif, marquage comme complété et passage au suivant")
+                                        completed_combos.append(combo)
+                                        save_checkpoint(city, keyword, completed_combos)
+                                        continue
                             
-                            # Continuer avec la prochaine combinaison
+                            # Pour les autres erreurs, marquer comme complété et continuer
+                            print(f"  ⚠️  Erreur non critique, passage au suivant")
+                            completed_combos.append(combo)
+                            save_checkpoint(city, keyword, completed_combos)
+                            random_delay(3, 6)  # Pause avant de continuer
                             continue
                 
                 # Nettoyer les doublons finaux
