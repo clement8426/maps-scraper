@@ -43,9 +43,17 @@ async function initEnrichPage() {
   }
 
   async function refreshLogs() {
-    const res = await api.logs();
-    logBox.textContent = res.lines.join('');
-    logBox.scrollTop = logBox.scrollHeight;
+    try {
+      const res = await api.logs();
+      if (res.lines && res.lines.length > 0) {
+        logBox.textContent = res.lines.join('');
+        logBox.scrollTop = logBox.scrollHeight;
+      } else {
+        logBox.textContent = 'Aucun log pour le moment. Les logs apparaîtront ici quand le pipeline sera lancé.';
+      }
+    } catch (e) {
+      logBox.textContent = `Erreur chargement logs: ${e.message}`;
+    }
   }
 
   startBtn.onclick = async () => {

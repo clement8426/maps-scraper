@@ -105,12 +105,18 @@ def enrich_status():
 @app.route("/api/enrich/logs", methods=["GET"])
 @auth.login_required
 def enrich_logs():
-    log_path = os.path.join(BASE_DIR, "pipeline.log")
+    # Le log est créé dans backend/pipeline.log par pipeline.py
+    log_path = os.path.join(os.path.dirname(__file__), "pipeline.log")
     if not os.path.exists(log_path):
-        return jsonify({"lines": []})
-    with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
-        lines = f.readlines()[-400:]
-    return jsonify({"lines": lines})
+        return jsonify({"lines": ["[INFO] Fichier de log non trouvé. Les logs apparaîtront ici après le premier lancement.\n"]})
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()[-400:]
+        if not lines:
+            return jsonify({"lines": ["[INFO] Fichier de log vide. Lancez le pipeline pour voir les logs.\n"]})
+        return jsonify({"lines": lines})
+    except Exception as e:
+        return jsonify({"lines": [f"[ERREUR] Impossible de lire les logs: {str(e)}\n"]})
 
 
 # ---------- DB VIEWER ----------
