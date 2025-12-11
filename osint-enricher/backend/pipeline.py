@@ -138,7 +138,7 @@ class OsintPipeline:
         log("Pipeline terminé.")
 
     # ---------- Individual steps ----------
-    def run_cmd(self, cmd, timeout=40):
+    def run_cmd(self, cmd, timeout=40, allow_nonzero=False):
         """Exécute une commande si l'outil est disponible"""
         tool_name = cmd[0] if isinstance(cmd, list) else cmd.split()[0]
         
@@ -147,17 +147,33 @@ class OsintPipeline:
             return ""
         
         try:
-            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=timeout, text=True)
-            return out
+            if allow_nonzero:
+                # Utiliser run() pour permettre les codes de retour non-zéro
+                result = subprocess.run(cmd, capture_output=True, timeout=timeout, text=True)
+                # Retourner la sortie même si le code de retour n'est pas 0
+                return result.stdout if result.stdout else result.stderr
+            else:
+                # Utiliser check_output() pour les outils qui doivent retourner 0
+                out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=timeout, text=True)
+                return out
         except subprocess.TimeoutExpired:
-            log(f"  ⚠️  Timeout: {tool_name}")
+            # Timeout est silencieux (normal pour certains outils)
+            return ""
+        except subprocess.CalledProcessError as e:
+            # Code de retour non-zéro : peut être normal (pas de résultats)
+            # Ne pas logger comme erreur si allow_nonzero
+            if allow_nonzero:
+                return e.stdout if e.stdout else ""
+            # Sinon, c'est une vraie erreur
             return ""
         except FileNotFoundError:
             # Marquer comme non disponible pour éviter de réessayer
             self.available_tools[tool_name] = False
             return ""
         except Exception as e:
-            log(f"  ⚠️  Erreur {tool_name}: {str(e)[:80]}")
+            # Seulement logger les vraies exceptions
+            if "No such file" not in str(e):
+                log(f"  ⚠️  Erreur {tool_name}: {str(e)[:80]}")
             return ""
 
     def run_whatweb(self, website):
@@ -166,7 +182,13 @@ class OsintPipeline:
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
         if not domain:
             return None
-        res = self.run_cmd(["whatweb", domain, "--log-brief=-", "--no-errors"])
+        
+        # Essayer d'abord avec --log-verbose pour plus d'infos
+        res = self.run_cmd(["whatweb", domain, "--log-verbose=-", "--no-errors"], timeout=30)
+        if not res:
+            # Fallback sur log-brief
+            res = self.run_cmd(["whatweb", domain, "--log-brief=-", "--no-errors"], timeout=30)
+        
         if not res:
             return None
         
@@ -174,14 +196,65 @@ class OsintPipeline:
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         cleaned = ansi_escape.sub('', res)
         
-        # Extraire les informations pertinentes
-        lines = [l.strip() for l in cleaned.splitlines() if l.strip()]
+        # Extraire les technologies importantes
+        tech_found = []
         
-        # Limiter la taille et nettoyer
-        result = " | ".join(lines[:3])[:500]
+        # Technologies CMS
+        if re.search(r'\bWordPress\b', cleaned, re.I):
+            tech_found.append('WordPress')
+            # Chercher la version si disponible
+            wp_version = re.search(r'WordPress\[([^\]]+)\]', cleaned, re.I)
+            if wp_version:
+                tech_found.append(f"WP {wp_version.group(1)}")
+        
+        # Plugins WordPress
+        if re.search(r'\bYoast\b', cleaned, re.I):
+            tech_found.append('Yoast SEO')
+        if re.search(r'\bWooCommerce\b', cleaned, re.I):
+            tech_found.append('WooCommerce')
+        if re.search(r'\bElementor\b', cleaned, re.I):
+            tech_found.append('Elementor')
+        
+        # Serveur web
+        server_match = re.search(r'HTTPServer\[([^\]]+)\]', cleaned, re.I)
+        if server_match:
+            tech_found.append(f"Server: {server_match.group(1)}")
+        
+        # Frameworks JS
+        if re.search(r'\bReact\b', cleaned, re.I):
+            tech_found.append('React')
+        if re.search(r'\bVue\.js\b', cleaned, re.I):
+            tech_found.append('Vue.js')
+        if re.search(r'\bAngular\b', cleaned, re.I):
+            tech_found.append('Angular')
+        
+        # jQuery
+        jquery_match = re.search(r'JQuery\[([^\]]+)\]', cleaned, re.I)
+        if jquery_match:
+            tech_found.append(f"jQuery {jquery_match.group(1)}")
+        
+        # IP
+        ip_match = re.search(r'IP\[([^\]]+)\]', cleaned, re.I)
+        if ip_match:
+            tech_found.append(f"IP: {ip_match.group(1)}")
+        
+        # Pays
+        country_match = re.search(r'Country\[[^\]]+\]\[([^\]]+)\]', cleaned, re.I)
+        if country_match:
+            tech_found.append(f"Pays: {country_match.group(1)}")
+        
+        # Si aucune tech spécifique trouvée, utiliser les infos de base
+        if not tech_found:
+            lines = [l.strip() for l in cleaned.splitlines() if l.strip() and not l.startswith('http://')]
+            # Prendre les premières infos utiles
+            for line in lines[:5]:
+                if 'HTTPServer' in line or 'IP' in line or 'Country' in line:
+                    tech_found.append(line.split('[')[0].strip() if '[' in line else line[:50])
+        
+        result = " | ".join(tech_found[:8])[:500] if tech_found else None
         
         if result:
-            log(f"  ✅ WhatWeb: OK")
+            log(f"  ✅ WhatWeb: {len(tech_found)} tech(s)")
         return result if result else None
 
     def run_email_tools(self, website):
@@ -190,18 +263,19 @@ class OsintPipeline:
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
         out = []
         
-        # theHarvester
+        # theHarvester (peut retourner code non-zéro si aucun résultat)
         if self.available_tools.get("theHarvester"):
-            harvest = self.run_cmd(["theHarvester", "-d", domain, "-b", "all"])
+            harvest = self.run_cmd(["theHarvester", "-d", domain, "-b", "all"], allow_nonzero=True)
             if harvest:
-                log(f"  ✅ theHarvester: {len(harvest)} car")
+                log(f"  ✅ theHarvester: OK")
             out.append(harvest)
         
         # Regex extraction
         emails = set()
         for blob in out:
-            for m in re.findall(r"[a-zA-Z0-9._%+-]+@" + re.escape(domain), blob):
-                emails.add(m.lower())
+            if blob:
+                for m in re.findall(r"[a-zA-Z0-9._%+-]+@" + re.escape(domain), blob):
+                    emails.add(m.lower())
         
         result = ", ".join(sorted(emails)) if emails else None
         if result:
@@ -229,21 +303,50 @@ class OsintPipeline:
         if not website or not self.available_tools.get("whois"):
             return None
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
-        res = self.run_cmd(["whois", domain], timeout=25)
+        # whois peut retourner code 2 si le domaine n'existe pas ou n'est pas trouvé
+        res = self.run_cmd(["whois", domain], timeout=25, allow_nonzero=True)
         if res:
-            log(f"  ✅ WHOIS: {len(res)} car")
+            log(f"  ✅ WHOIS: OK")
         return res[:4000] if res else None
 
     def run_wayback(self, website):
         if not website or not self.available_tools.get("curl"):
             return None
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
-        url = f"https://web.archive.org/cdx/search?url={domain}&output=txt&fl=original&filter=statuscode:200&limit=20"
+        url = f"https://web.archive.org/cdx/search?url={domain}&output=txt&fl=original&filter=statuscode:200&limit=50"
         res = self.run_cmd(["curl", "-s", url], timeout=20)
-        urls = [u for u in res.splitlines() if u.startswith("http")]
-        if urls:
-            log(f"  ✅ Wayback: {len(urls)} URLs")
-        return ", ".join(urls) if urls else None
+        urls = [u.strip() for u in res.splitlines() if u.strip().startswith("http")]
+        
+        if not urls:
+            return None
+        
+        # Nettoyer et dédupliquer les URLs
+        cleaned_urls = []
+        seen = set()
+        
+        for u in urls:
+            # Normaliser l'URL (enlever trailing slash, convertir en minuscules)
+            normalized = u.rstrip('/').lower()
+            # Garder la version avec https si disponible
+            if normalized not in seen:
+                seen.add(normalized)
+                # Préférer https
+                if u.startswith('https://'):
+                    cleaned_urls.append(u.rstrip('/'))
+                elif u.startswith('http://'):
+                    https_version = u.replace('http://', 'https://').rstrip('/')
+                    if https_version.lower() not in seen:
+                        cleaned_urls.append(https_version)
+                    else:
+                        # Remplacer http par https dans la liste
+                        cleaned_urls = [url if url.lower() != https_version.lower() else https_version for url in cleaned_urls]
+        
+        # Limiter à 20 URLs uniques
+        unique_urls = list(dict.fromkeys(cleaned_urls))[:20]
+        
+        if unique_urls:
+            log(f"  ✅ Wayback: {len(unique_urls)} URLs uniques")
+        return ", ".join(unique_urls) if unique_urls else None
 
     def update_company(self, cid, **fields):
         set_parts = []

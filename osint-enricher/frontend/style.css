@@ -193,25 +193,10 @@ header {
 
 .table td.clickable {
   cursor: pointer;
-  position: relative;
 }
 
 .table td.clickable:hover {
   background: #f1f5f9;
-}
-
-.table td.clickable::after {
-  content: '👁️';
-  position: absolute;
-  right: 4px;
-  top: 4px;
-  font-size: 10px;
-  opacity: 0.3;
-  transition: opacity 0.2s;
-}
-
-.table td.clickable:hover::after {
-  opacity: 0.6;
 }
 
 /* Colonnes spécifiques avec largeur fixe */

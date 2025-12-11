@@ -124,10 +124,33 @@ async function initDbPage() {
     // Si c'est une liste séparée par virgules, formater en liste
     if (formattedContent.includes(',') && formattedContent.length > 50) {
       const items = formattedContent.split(',').map(item => item.trim()).filter(item => item);
-      formattedContent = items.map((item, idx) => `${idx + 1}. ${item}`).join('\n');
+      
+      // Dédupliquer les URLs (enlever trailing slash)
+      const uniqueItems = [];
+      const seen = new Set();
+      
+      items.forEach(item => {
+        // Normaliser les URLs
+        let normalized = item;
+        if (item.startsWith('http')) {
+          normalized = item.replace(/\/+$/, '').toLowerCase();
+        }
+        
+        if (!seen.has(normalized)) {
+          seen.add(normalized);
+          uniqueItems.push(item);
+        }
+      });
+      
+      formattedContent = uniqueItems.map((item, idx) => {
+        // Si c'est une URL, la rendre cliquable
+        if (item.startsWith('http')) {
+          return `${idx + 1}. ${item}`;
+        }
+        return `${idx + 1}. ${item}`;
+      }).join('\n');
     }
     
-    // Si c'est une URL, la rendre cliquable (mais on garde le texte brut dans la modal)
     modalContent.textContent = formattedContent;
     modal.style.display = 'flex';
   }
