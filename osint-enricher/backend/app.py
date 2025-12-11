@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -12,13 +12,13 @@ from pipeline import OsintPipeline
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_DB = os.path.abspath(os.path.join(BASE_DIR, "..", "backend", "companies.db"))
-FRONTEND_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "frontend"))
+FRONTEND_DIR = os.path.abspath(os.path.join(BASE_DIR, "frontend"))
 
 app = Flask(
     __name__,
     static_folder=FRONTEND_DIR,
     template_folder=FRONTEND_DIR,
-    static_url_path=""
+    static_url_path="/static"
 )
 
 auth = HTTPBasicAuth()
@@ -210,18 +210,34 @@ def health():
 @app.route("/enrich")
 @auth.login_required
 def enrich_page():
-    return send_from_directory(FRONTEND_DIR, "enrich.html")
+    html_path = os.path.join(FRONTEND_DIR, "enrich.html")
+    if os.path.exists(html_path):
+        return send_file(html_path)
+    return jsonify({"error": "File not found", "path": html_path, "frontend_dir": FRONTEND_DIR}), 404
 
 
 @app.route("/db")
 @auth.login_required
 def db_page():
-    return send_from_directory(FRONTEND_DIR, "db.html")
+    html_path = os.path.join(FRONTEND_DIR, "db.html")
+    if os.path.exists(html_path):
+        return send_file(html_path)
+    return jsonify({"error": "File not found", "path": html_path, "frontend_dir": FRONTEND_DIR}), 404
 
 
 @app.route("/")
 def root():
-    return jsonify({"message": "OSINT Enricher up", "docs": "/enrich"})
+    return jsonify({"message": "OSINT Enricher up", "docs": "/enrich", "db_viewer": "/db"})
+
+
+@app.route("/static/<path:filename>")
+@auth.login_required
+def serve_static(filename):
+    """Serve static files (CSS, JS)"""
+    file_path = os.path.join(FRONTEND_DIR, filename)
+    if os.path.exists(file_path):
+        return send_file(file_path)
+    return jsonify({"error": "File not found", "path": file_path}), 404
 
 
 if __name__ == "__main__":
