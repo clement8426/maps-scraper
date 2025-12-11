@@ -55,9 +55,23 @@ async function initEnrichPage() {
   async function refreshStatus() {
     const st = await api.status();
     
+    // 🔍 DEBUG: Afficher TOUT ce que le backend renvoie
+    console.log('=== REFRESH STATUS ===');
+    console.log('Timestamp:', new Date().toLocaleTimeString());
+    console.log('Backend response:', JSON.stringify(st, null, 2));
+    console.log('st.running:', st.running);
+    console.log('st.processed:', st.processed);
+    console.log('st.total:', st.total);
+    console.log('st.message:', st.message);
+    console.log('st.finished_at:', st.finished_at);
+    
     // Détection simple : si processed >= total ET total > 0, c'est terminé
     const isCompleted = (st.total > 0 && st.processed >= st.total);
     const isRunning = st.running && !isCompleted;
+    
+    console.log('Calculated isCompleted:', isCompleted);
+    console.log('Calculated isRunning:', isRunning);
+    console.log('=====================');
     
     // Mise à jour du statut
     if (isRunning) {
