@@ -24,6 +24,10 @@ async function initEnrichPage() {
 
   if (!startBtn) return; // not on this page
   
+  // Cache du dernier statut pour éviter les clignotements
+  let lastRunningState = null;
+  let consecutiveStoppedCount = 0;
+  
   // Gérer le mode illimité
   if (unlimitedMode) {
     unlimitedMode.onchange = () => {
@@ -51,24 +55,43 @@ async function initEnrichPage() {
   async function refreshStatus() {
     const st = await api.status();
     
-    // Statut stable : ne change pas entre chaque outil
-    if (st.running) {
-      statusEl.textContent = '🔄 En cours';
-      statusEl.className = 'status status-running';
+    // Logique anti-clignotement : 
+    // Si on était en cours et qu'on reçoit "arrêté", on attend 2 confirmations
+    if (lastRunningState === true && !st.running) {
+      consecutiveStoppedCount++;
+      if (consecutiveStoppedCount < 2) {
+        // On garde l'état "en cours" jusqu'à confirmation
+        return;
+      }
     } else {
-      statusEl.textContent = '⏸️ Arrêté';
-      statusEl.className = 'status status-stopped';
+      consecutiveStoppedCount = 0;
     }
     
-    // Afficher le message de progression séparément
-    if (st.message && st.running) {
+    // Si le statut a vraiment changé, on met à jour l'interface
+    const isRunning = st.running || (st.total > 0 && st.processed < st.total);
+    
+    if (lastRunningState !== isRunning) {
+      lastRunningState = isRunning;
+      
+      if (isRunning) {
+        statusEl.textContent = '🔄 En cours';
+        statusEl.className = 'status status-running';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      } else {
+        statusEl.textContent = '⏸️ Arrêté';
+        statusEl.className = 'status status-stopped';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    }
+    
+    // Toujours mettre à jour la progression (ça ne clignote pas)
+    if (st.message && isRunning) {
       progressEl.textContent = `${st.message} (${st.processed || 0}/${st.total || 0})`;
     } else {
       progressEl.textContent = `${st.processed || 0} / ${st.total || 0}`;
     }
-    
-    startBtn.disabled = !!st.running;
-    stopBtn.disabled = !st.running;
   }
 
   async function refreshLogs() {
@@ -86,16 +109,34 @@ async function initEnrichPage() {
   }
 
   startBtn.onclick = async () => {
+    // Forcer l'état "en cours" immédiatement
+    lastRunningState = true;
+    statusEl.textContent = '🔄 En cours';
+    statusEl.className = 'status status-running';
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    
     await api.start({
       city: citySelect.value || null,
       limit: Number(limitInput.value || 50),
       require_website: requireWebsite.checked,
     });
-    refreshStatus();
+    
+    setTimeout(refreshStatus, 1000);
   };
+  
   stopBtn.onclick = async () => {
     await api.stop();
-    refreshStatus();
+    
+    // Forcer l'état "arrêté" après confirmation
+    lastRunningState = false;
+    consecutiveStoppedCount = 0;
+    statusEl.textContent = '⏸️ Arrêté';
+    statusEl.className = 'status status-stopped';
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    
+    setTimeout(refreshStatus, 1000);
   };
 
   await loadCities();
