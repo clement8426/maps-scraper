@@ -167,10 +167,11 @@ def list_companies():
         filters.append("(website IS NOT NULL AND website <> '')")
 
     where_clause = "WHERE " + " AND ".join(filters) if filters else ""
+    # Sélectionner toutes les colonnes dans l'ordre de la table
     query = f"""
-        SELECT id, company_name, city, website, email, 
-               maps_link, phone, address, rating, reviews_count, 
-               social_links, tag,
+        SELECT id, company_name, maps_link, city, tag, address, phone, 
+               website, rating, reviews_count, email, social_links,
+               status, created_at, updated_at,
                tech_stack, emails_osint, pdf_emails, subdomains, 
                whois_raw, wayback_urls, osint_status, osint_updated_at
         FROM companies
@@ -191,36 +192,43 @@ def list_companies():
             return text
         return text[:max_len] + "..." if len(text) > max_len else text
     
+    # Mapping correct des colonnes selon l'ordre de la table
+    # 0:id, 1:company_name, 2:maps_link, 3:city, 4:tag, 5:address, 6:phone,
+    # 7:website, 8:rating, 9:reviews_count, 10:email, 11:social_links,
+    # 12:status, 13:created_at, 14:updated_at,
+    # 15:tech_stack, 16:emails_osint, 17:pdf_emails, 18:subdomains,
+    # 19:whois_raw, 20:wayback_urls, 21:osint_status, 22:osint_updated_at
+    
     data = [
         {
             "id": r[0],
             "company_name": r[1],
-            "city": r[2],
-            "website": r[3],
-            "email": r[4],
-            "maps_link": r[5],
+            "maps_link": r[2],
+            "city": r[3],
+            "tag": r[4],
+            "address": r[5],
             "phone": r[6],
-            "address": r[7],
+            "website": r[7],
             "rating": r[8],
             "reviews_count": r[9],
-            "social_links": r[10],
-            "tag": r[11],
-            "tech_stack": truncate(r[12], 200),
-            "tech_stack_full": r[12],
-            "emails_osint": r[13],
-            "emails_osint_full": r[13],
-            "pdf_emails": r[14],
-            "subdomains": truncate(r[15], 200),
-            "subdomains_full": r[15],
-            "whois_raw": truncate(r[16], 200),
-            "whois_raw_full": r[16],
-            "wayback_urls": truncate(r[17], 200),
-            "wayback_urls_full": r[17],
-            "osint_status": r[18],
-            "osint_updated_at": r[19],
+            "email": r[10],
+            "social_links": r[11],
+            "tech_stack": truncate(r[15], 200),
+            "tech_stack_full": r[15],
+            "emails_osint": r[16],
+            "emails_osint_full": r[16],
+            "pdf_emails": r[17],
+            "subdomains": truncate(r[18], 200),
+            "subdomains_full": r[18],
+            "whois_raw": truncate(r[19], 200),
+            "whois_raw_full": r[19],
+            "wayback_urls": truncate(r[20], 200),
+            "wayback_urls_full": r[20],
+            "osint_status": r[21],
+            "osint_updated_at": r[22],
             # Données complètes pour la modal
-            "address_full": r[7],
-            "social_links_full": r[10],
+            "address_full": r[5],
+            "social_links_full": r[11],
         }
         for r in rows
     ]
