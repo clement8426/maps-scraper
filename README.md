@@ -1,277 +1,738 @@
-# 🕷️ Scraper Google Maps - Suisse Romande
+# 🗺️ Maps Scraper - Scraper Google Maps pour entreprises tech en Suisse Romande
 
-**Système complet de scraping avec interface web** pour extraire et gérer les données d'entreprises tech depuis Google Maps.
+## 📋 Table des matières
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+- [Vue d'ensemble](#vue-densemble)
+- [Architecture](#architecture)
+- [Stack technique](#stack-technique)
+- [Configuration VPS](#configuration-vps)
+- [Installation](#installation)
+- [Utilisation](#utilisation)
+- [Structure du projet](#structure-du-projet)
+- [Base de données](#base-de-données)
+- [Services et processus](#services-et-processus)
+- [Sécurité](#sécurité)
+- [Maintenance](#maintenance)
+- [Dépannage](#dépannage)
 
 ---
 
-## ⚡ Quick Start (VPS Ubuntu/Debian)
+## 🎯 Vue d'ensemble
+
+Application web complète de scraping Google Maps pour récupérer automatiquement les informations d'entreprises tech en Suisse Romande (canton de Neuchâtel en priorité).
+
+### Fonctionnalités
+
+- ✅ Scraping automatique Google Maps (nom, adresse, téléphone, site web, note, avis)
+- ✅ Validation DNS des emails (rejet des emails fictifs)
+- ✅ Extraction emails depuis les sites web des entreprises
+- ✅ Rotation des User-Agents pour éviter la détection
+- ✅ Système de checkpoint (reprise automatique après interruption)
+- ✅ Interface web avec dashboard temps réel
+- ✅ Filtres avancés (ville, présence site/email)
+- ✅ Export CSV avec filtres appliqués
+- ✅ Logs en temps réel du scraping
+- ✅ Récupération automatique en cas d'erreur navigateur
+- ✅ Base de données SQLite
+- ✅ Authentication HTTP Basic
+- ✅ Responsive (mobile, tablette, desktop)
+
+---
+
+## 🏗️ Architecture
+
+### Architecture globale
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Internet                             │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    VPS Ubuntu 25.04                          │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Nginx (port 80)                                     │  │
+│  │  - Reverse proxy                                     │  │
+│  │  - HTTP Basic Auth (.htpasswd)                      │  │
+│  │  - Gestion SSL (si configuré)                       │  │
+│  └──────────────────┬───────────────────────────────────┘  │
+│                     │                                        │
+│                     ▼                                        │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Gunicorn (127.0.0.1:5000)                          │  │
+│  │  - 2 workers                                         │  │
+│  │  - WSGI Server                                       │  │
+│  └──────────────────┬───────────────────────────────────┘  │
+│                     │                                        │
+│                     ▼                                        │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Flask Application (backend/app.py)                  │  │
+│  │  - API REST                                          │  │
+│  │  - Gestion scraper                                   │  │
+│  │  - Streaming logs                                    │  │
+│  └──────┬────────────────────────────┬──────────────────┘  │
+│         │                            │                      │
+│         ▼                            ▼                      │
+│  ┌─────────────┐            ┌──────────────────┐          │
+│  │  Frontend   │            │  Backend         │          │
+│  │  (HTML/CSS) │            │  scraper_suisse  │          │
+│  │  /JS)       │            │  _romande.py     │          │
+│  └─────────────┘            └────────┬─────────┘          │
+│                                      │                      │
+│                                      ▼                      │
+│                             ┌──────────────────┐           │
+│                             │  companies.db    │           │
+│                             │  (SQLite)        │           │
+│                             └──────────────────┘           │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Flux de données
+
+```
+1. Utilisateur → Nginx (auth) → Gunicorn → Flask → Interface web
+2. Clic "Démarrer" → Flask lance scraper_suisse_romande.py
+3. Scraper → Google Maps → Extraction données → SQLite
+4. Interface web → API Flask → Lecture SQLite → Affichage temps réel
+```
+
+---
+
+## 🛠️ Stack technique
+
+### Backend
+- **Python 3.13** (compatible)
+- **Flask 3.0.0** - Framework web
+- **Gunicorn 21.2.0** - WSGI server
+- **Playwright 1.48.0** - Automatisation navigateur (Firefox + Chromium)
+- **BeautifulSoup4** - Parsing HTML
+- **Pandas 2.2.0+** - Manipulation données
+- **SQLite3** - Base de données
+- **dnspython** - Validation DNS emails
+- **email-validator** - Validation emails
+
+### Frontend
+- **HTML5/CSS3/JavaScript** (Vanilla, pas de framework)
+- **Design responsive** (mobile-first)
+- **Fetch API** pour les appels AJAX
+
+### Infrastructure
+- **Nginx** - Reverse proxy + authentification
+- **Systemd** - Gestion des services
+- **UFW** - Firewall
+- **Git** - Versioning
+
+### Serveur
+- **OS** : Ubuntu 25.04 (Plucky)
+- **Utilisateur** : `ubuntu`
+- **Répertoire** : `/home/ubuntu/maps-scraper`
+
+---
+
+## ⚙️ Configuration VPS
+
+### État actuel du VPS
+
+#### Services actifs
 
 ```bash
-# Cloner + installer (tout automatique)
-git clone https://github.com/clement8426/maps-scraper.git
+# Service principal (web interface)
+scraper-web.service
+├─ Status: active (running)
+├─ Port: 127.0.0.1:5000
+├─ User: ubuntu
+├─ WorkingDirectory: /home/ubuntu/maps-scraper/backend
+└─ Command: gunicorn --bind 127.0.0.1:5000 app:app --workers 2
+```
+
+#### Ports ouverts (UFW)
+
+| Port | Service | Description |
+|------|---------|-------------|
+| 22   | SSH     | Accès administrateur |
+| 80   | HTTP    | Interface web (Nginx) |
+| 443  | HTTPS   | SSL (si configuré) |
+
+#### Structure fichiers VPS
+
+```
+/home/ubuntu/maps-scraper/
+├── backend/
+│   ├── app.py                      # API Flask
+│   ├── scraper_suisse_romande.py  # Script scraping
+│   ├── companies.db                # Base de données SQLite
+│   ├── checkpoint.json             # Progression scraping
+│   ├── intermediate_data.csv       # Données temporaires
+│   ├── scraper.log                 # Logs du scraper
+│   └── utils/
+│       ├── clean_and_deduce_emails.py
+│       └── verify_emails.py
+├── frontend/
+│   ├── index.html                  # Interface web
+│   ├── style.css                   # Styles
+│   └── script.js                   # Logique frontend
+├── scripts/
+│   ├── install.sh                  # Script installation VPS
+│   └── change_password.py          # Utilitaire changement mot de passe
+├── docs/
+│   ├── INSTALL.md                  # Documentation installation
+│   ├── UPDATE.md                   # Procédure mise à jour
+│   └── CHANGE_PASSWORD.md          # Changer mot de passe admin
+├── venv/                           # Environnement virtuel Python
+├── requirements.txt                # Dépendances Python
+├── .env                            # Variables d'environnement
+├── .gitignore
+└── README.md
+```
+
+#### Configuration Nginx
+
+**Fichier** : `/etc/nginx/sites-available/scraper`
+
+```nginx
+server {
+    listen 80;
+    server_name _;
+
+    # Authentification HTTP Basic
+    auth_basic "Scraper Admin";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Pour le streaming des logs
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+#### Configuration Systemd
+
+**Fichier** : `/etc/systemd/system/scraper-web.service`
+
+```ini
+[Unit]
+Description=Scraper Google Maps - Web Interface
+After=network.target
+
+[Service]
+Type=notify
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/maps-scraper/backend
+Environment="PATH=/home/ubuntu/maps-scraper/venv/bin"
+EnvironmentFile=/home/ubuntu/maps-scraper/.env
+ExecStart=/home/ubuntu/maps-scraper/venv/bin/gunicorn --bind 127.0.0.1:5000 app:app --workers 2
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### Variables d'environnement (.env)
+
+```bash
+WEB_USERNAME=admin
+WEB_PASSWORD=VotreMotDePasseIci
+DATABASE_PATH=companies.db
+FLASK_ENV=production
+```
+
+---
+
+## 📦 Installation
+
+### Installation initiale sur VPS
+
+```bash
+# 1. Se connecter au VPS
+ssh ubuntu@<IP_VPS>
+
+# 2. Cloner le projet
+git clone https://github.com/votre-compte/maps-scraper.git
 cd maps-scraper
+
+# 3. Lancer l'installation automatique
 sudo ./scripts/install.sh
 ```
 
-**⏱️ Temps : 5-10 minutes**  
-L'URL et les identifiants sont affichés en fin d'installation.
+Le script `install.sh` effectue :
+- ✅ Mise à jour du système
+- ✅ Installation dépendances système (libxml2, libxslt, pkg-config, etc.)
+- ✅ Installation Python 3.13 + pip
+- ✅ Création environnement virtuel
+- ✅ Installation dépendances Python
+- ✅ Installation Playwright (Firefox + Chromium)
+- ✅ Configuration Nginx (reverse proxy + auth)
+- ✅ Création service systemd
+- ✅ Configuration firewall (UFW)
+- ✅ Génération `.env` avec identifiants
 
-### En local (Développement)
+### Installation en local (développement)
 
 ```bash
-# 1. Cloner et installer
-git clone https://github.com/VOTRE_USERNAME/maps-scrap.git
-cd maps-scrap
+# 1. Cloner le projet
+git clone https://github.com/votre-compte/maps-scraper.git
+cd maps-scraper
+
+# 2. Créer l'environnement virtuel
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Installer les dépendances
 pip install -r requirements.txt
-playwright install firefox
 
-# 2. Configuration
+# 4. Installer Playwright
+playwright install firefox chromium
+
+# 5. Créer le fichier .env
 cp env.example .env
-nano .env  # Modifier USERNAME et PASSWORD
+# Modifier .env avec vos identifiants
 
-# 3. Lancer
-cd backend
-python app.py
-# Ouvrir http://localhost:5000
+# 6. Lancer l'application
+./start_local.sh
 ```
 
----
-
-## 📁 Structure du projet
-
-```
-maps-scrap/
-├── backend/              # Backend Flask + Scraper
-│   ├── app.py           # API REST
-│   ├── scraper_suisse_romande.py  # Scraper principal
-│   └── utils/           # Utilitaires (validation emails, etc.)
-├── frontend/            # Interface web
-│   ├── index.html      # Dashboard
-│   ├── style.css       # Design moderne
-│   └── script.js       # Interactivité
-├── scripts/             # Scripts d'installation
-│   ├── install.sh      # Installation VPS (automatique)
-│   └── start.sh        # Démarrage manuel
-├── docs/                # Documentation
-│   ├── DEPLOY.md       # Guide déploiement VPS
-│   └── QUICKSTART.md   # Guide rapide
-├── tests/               # Tests et outils de debug
-└── requirements.txt     # Dépendances Python
-```
+Accès : `http://localhost:8080`
 
 ---
 
-## ✨ Fonctionnalités
+## 🚀 Utilisation
 
-### 🎯 Scraping
-- **25 villes** (Canton de Neuchâtel + Suisse Romande)
-- **40 mots-clés** tech (Web, SaaS, DevOps, Data, IA...)
-- **Extraction** : nom, adresse, téléphone, site, email, note, avis
-- **Anti-détection** : user-agents rotatifs, délais aléatoires
-- **Reprise automatique** après interruption
+### Accès à l'interface web
 
-### 🌐 Interface Web
-- **Dashboard temps réel** avec statistiques
-- **Filtres avancés** (ville, email, site web)
-- **Contrôle du scraper** (démarrer/arrêter)
-- **Export CSV** avec filtres
-- **Graphiques** (top villes)
+**URL** : `http://<IP_VPS>`
 
-### 💾 Stockage
-- **SQLite** (base de données embarquée)
-- **Export CSV** à la demande
-- **Sauvegarde automatique**
+**Identifiants** : Ceux configurés dans `.env` lors de l'installation
 
-### 🔒 Sécurité
-- **Double authentification** (Nginx + Flask)
-- **Firewall configuré** automatiquement
-- **HTTPS ready** (certificat Let's Encrypt)
+### Fonctionnalités de l'interface
 
-### ✅ Validation
-- **Emails vérifiés** par DNS (MX records)
-- **Suppression des emails fictifs**
-- **Nettoyage automatique**
+#### 1. Dashboard
+- Statistiques temps réel
+  - Total entreprises
+  - Avec site web
+  - Avec email
+  - Dernière mise à jour
+- Top 10 villes
+- Contrôle du scraper (Démarrer/Arrêter)
+- Statut et progression
 
----
+#### 2. Filtres
+- Par ville (dropdown)
+- Avec site web (checkbox)
+- Avec email (checkbox)
+- Application en temps réel
 
-## 🗺️ Zones géographiques
+#### 3. Liste des entreprises
+- Tableau avec toutes les données
+- Liens cliquables (site web, Maps)
+- Tri par colonnes
+- Export CSV avec filtres
 
-### Canton de Neuchâtel (priorité)
-Neuchâtel, La Chaux-de-Fonds, Le Locle, Val-de-Ruz, Val-de-Travers, Fleurier, Cernier, Peseux, Colombier, Marin-Epagnier, Saint-Blaise, Boudry, Cressier
+#### 4. Logs en temps réel
+- Affichage des logs du scraper
+- Scroll automatique
+- Couleurs selon type (success, error, warning, info)
+- Bouton "Voir les logs"
 
-### Villes proches
-Yverdon-les-Bains, Pontarlier, Morteau, Besançon
-
-### Suisse Romande
-Genève, Lausanne, Fribourg, Sion, Nyon, Renens, Meyrin, Vevey, Montreux, Delémont, Porrentruy
-
-**Total : 1000 combinaisons possibles** (25 villes × 40 mots-clés)
-
----
-
-## 📊 Résultats attendus
-
-- **Volume** : 10 000 - 50 000 entreprises
-- **Temps** : 8-12h pour tout scraper
-- **Qualité** : Emails validés DNS, données publiques uniquement
-
----
-
-## 🛠️ Commandes utiles
+### Commandes serveur
 
 ```bash
-# Service systemd
+# Voir le statut du service
 sudo systemctl status scraper-web
+
+# Redémarrer le service
 sudo systemctl restart scraper-web
+
+# Arrêter le service
+sudo systemctl stop scraper-web
+
+# Démarrer le service
+sudo systemctl start scraper-web
+
+# Voir les logs en temps réel
 sudo journalctl -u scraper-web -f
 
-# Base de données
-cd backend && sqlite3 companies.db
-SELECT * FROM companies WHERE city = 'Neuchâtel' LIMIT 10;
+# Voir les logs du scraper
+tail -f ~/maps-scraper/backend/scraper.log
 
-# Mise à jour
-git pull
+# Vérifier si le scraper est actif
+ps aux | grep scraper_suisse_romande.py
+```
+
+---
+
+## 📊 Base de données
+
+### Structure SQLite (companies.db)
+
+```sql
+CREATE TABLE companies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_name TEXT NOT NULL,
+    maps_link TEXT UNIQUE,
+    city TEXT,
+    tag TEXT,                    -- Mot-clé de recherche
+    address TEXT,
+    phone TEXT,
+    website TEXT,
+    rating REAL,                 -- Note Google (0-5)
+    reviews_count INTEGER,       -- Nombre d'avis
+    email TEXT,                  -- Emails validés (séparés par virgule)
+    social_links TEXT,           -- Liens sociaux (LinkedIn, etc.)
+    status TEXT,                 -- 'Harvested', 'Enriched', etc.
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Accès direct à la BDD
+
+```bash
+cd ~/maps-scraper/backend
+sqlite3 companies.db
+
+# Commandes SQLite utiles
+.tables                          # Lister les tables
+.schema companies                # Voir la structure
+SELECT COUNT(*) FROM companies;  # Nombre total
+SELECT * FROM companies LIMIT 5; # Premiers résultats
+.exit                            # Quitter
+```
+
+---
+
+## 🔧 Services et processus
+
+### Service web (scraper-web.service)
+
+**Rôle** : Lance et maintient l'interface web Flask
+
+**Gestion** :
+```bash
+sudo systemctl start scraper-web    # Démarrer
+sudo systemctl stop scraper-web     # Arrêter
+sudo systemctl restart scraper-web  # Redémarrer
+sudo systemctl status scraper-web   # Statut
+sudo systemctl enable scraper-web   # Auto-démarrage au boot
+```
+
+**Logs** :
+```bash
+sudo journalctl -u scraper-web -f   # Logs temps réel
+sudo journalctl -u scraper-web -n 100  # 100 dernières lignes
+```
+
+### Processus de scraping
+
+**Démarrage** : Via l'interface web (bouton "Démarrer")
+
+**Script** : `backend/scraper_suisse_romande.py`
+
+**Logs** : `backend/scraper.log`
+
+**Caractéristiques** :
+- Tourne en arrière-plan (subprocess)
+- Indépendant du service web
+- Continue même si vous fermez votre navigateur
+- Peut être arrêté via l'interface web
+
+**Vérification manuelle** :
+```bash
+# Voir si le scraper tourne
+ps aux | grep scraper_suisse_romande.py
+
+# Arrêter manuellement (si nécessaire)
+pkill -f scraper_suisse_romande.py
+```
+
+---
+
+## 🔐 Sécurité
+
+### Authentification
+
+**Type** : HTTP Basic Authentication (Nginx)
+
+**Fichier** : `/etc/nginx/.htpasswd`
+
+**Format** : `username:password_hash`
+
+### Changer le mot de passe
+
+**Méthode 1 : Script automatique**
+```bash
+cd ~/maps-scraper
+python3 scripts/change_password.py
 sudo systemctl restart scraper-web
 ```
 
----
-
-## 📖 Documentation
-
-- **[QUICKSTART.md](docs/QUICKSTART.md)** - Démarrage rapide (5 min)
-- **[DEPLOY.md](docs/DEPLOY.md)** - Guide de déploiement complet
-- **[API Documentation](#api-endpoints)** - Endpoints REST
-
----
-
-## 🔌 API Endpoints
-
-```
-GET  /                      # Dashboard HTML
-GET  /api/companies         # Liste des entreprises (avec filtres)
-GET  /api/stats            # Statistiques globales
-GET  /api/cities           # Liste des villes
-GET  /api/scraper/status   # Statut du scraper
-POST /api/scraper/start    # Démarrer le scraper
-POST /api/scraper/stop     # Arrêter le scraper
-GET  /api/export/csv       # Exporter en CSV
+**Méthode 2 : Manuel**
+```bash
+cd ~/maps-scraper
+nano .env
+# Modifier WEB_PASSWORD=NouveauMotDePasse
+sudo htpasswd -c /etc/nginx/.htpasswd admin
+sudo systemctl restart nginx
+sudo systemctl restart scraper-web
 ```
 
-### Exemples
+### Firewall (UFW)
 
 ```bash
-# Obtenir les statistiques
-curl -u admin:password http://localhost:5000/api/stats
+# Voir les règles actives
+sudo ufw status
 
-# Filtrer par ville
-curl -u admin:password "http://localhost:5000/api/companies?city=Neuchâtel"
+# Ouvrir un port (si besoin)
+sudo ufw allow 81/tcp
 
-# Entreprises avec email uniquement
-curl -u admin:password "http://localhost:5000/api/companies?has_email=true"
+# Fermer un port
+sudo ufw delete allow 81/tcp
 ```
+
+### Bonnes pratiques
+
+- ✅ Ne jamais committer le fichier `.env`
+- ✅ Utiliser des mots de passe forts (12+ caractères)
+- ✅ Changer les identifiants par défaut
+- ✅ Maintenir le système à jour (`apt update && apt upgrade`)
+- ✅ Surveiller les logs régulièrement
+- ⚠️ Ne pas exposer la BDD SQLite publiquement
 
 ---
 
-## ⚙️ Configuration
+## 🔄 Maintenance
 
-### Variables d'environnement (.env)
+### Mise à jour du code
 
+**Sur votre machine locale** :
 ```bash
-WEB_USERNAME=admin          # Nom d'utilisateur interface web
-WEB_PASSWORD=votre_mdp      # Mot de passe
-PORT=5000                   # Port du serveur
-DEBUG=False                 # Mode debug (False en production)
+cd ~/test/maps-scrap
+git add .
+git commit -m "Description des changements"
+git push origin main
 ```
 
-### Personnaliser les recherches
+**Sur le VPS** :
+```bash
+cd ~/maps-scraper
+git pull origin main
 
-Modifier `backend/scraper_suisse_romande.py` :
+# Si nouvelles dépendances
+source venv/bin/activate
+pip install -r requirements.txt
 
-```python
-# Ajouter des villes (ligne ~20)
-CITIES = [
-    "Neuchâtel", "Le Locle",
-    "Votre Ville",  # Ajoutez ici
-]
+# Recharger systemd si service modifié
+sudo systemctl daemon-reload
 
-# Ajouter des mots-clés (ligne ~35)
-KEYWORDS = [
-    "Agence Web", "Startup",
-    "Votre Keyword",  # Ajoutez ici
-]
+# Redémarrer le service
+sudo systemctl restart scraper-web
+```
+
+📖 **Guide complet** : `docs/UPDATE.md`
+
+### Sauvegarde de la base de données
+
+```bash
+# Créer une sauvegarde
+cp ~/maps-scraper/backend/companies.db ~/companies_backup_$(date +%Y%m%d).db
+
+# Télécharger la BDD en local (depuis votre machine)
+scp ubuntu@<IP_VPS>:~/maps-scraper/backend/companies.db ./companies_local.db
+```
+
+### Nettoyage
+
+```bash
+# Supprimer les fichiers temporaires
+cd ~/maps-scraper/backend
+rm -f checkpoint.json intermediate_data.csv scraper.log
+
+# Vider la BDD (⚠️ ATTENTION)
+sqlite3 companies.db "DELETE FROM companies;"
 ```
 
 ---
 
 ## 🐛 Dépannage
 
-### Le service ne démarre pas
+### Problèmes courants
+
+#### 1. Service ne démarre pas
+
 ```bash
+# Voir les erreurs
 sudo journalctl -u scraper-web -n 50
-sudo systemctl restart scraper-web
+
+# Vérifier le port 5000
+sudo lsof -i :5000
+
+# Tester manuellement
+cd ~/maps-scraper/backend
+source ../venv/bin/activate
+python app.py
 ```
 
-### Impossible d'accéder à l'interface
+#### 2. Erreur "Not Found" sur l'interface
+
+**Cause** : Nginx ou Gunicorn mal configuré
+
+**Solution** :
 ```bash
-sudo systemctl status nginx
+# Vérifier Nginx
 sudo nginx -t
+sudo systemctl restart nginx
+
+# Vérifier le service
+sudo systemctl status scraper-web
+```
+
+#### 3. Scraper ne démarre pas
+
+**Vérifier** :
+```bash
+# Logs du scraper
+tail -f ~/maps-scraper/backend/scraper.log
+
+# Playwright installé ?
+cd ~/maps-scraper
+source venv/bin/activate
+playwright install firefox chromium
+```
+
+#### 4. Erreur "Executable doesn't exist"
+
+**Cause** : Navigateurs Playwright non installés
+
+**Solution** :
+```bash
+cd ~/maps-scraper
+source venv/bin/activate
+playwright install firefox chromium
+playwright install-deps firefox chromium  # Nécessite sudo
+```
+
+#### 5. Erreur d'authentification
+
+**Solution** : Régénérer le `.htpasswd`
+```bash
+sudo htpasswd -c /etc/nginx/.htpasswd admin
+# Entrer le même mot de passe que dans .env
 sudo systemctl restart nginx
 ```
 
-### Le scraper ne trouve rien
-```bash
-cd /home/scraper/maps-scraper
-source venv/bin/activate
-playwright install firefox
-playwright install-deps firefox
-```
+#### 6. Base de données corrompue
 
-### Réinitialiser les données
 ```bash
-cd /home/scraper/maps-scraper/backend
-rm companies.db checkpoint.json intermediate_data.csv
-sudo systemctl restart scraper-web
+# Vérifier l'intégrité
+sqlite3 ~/maps-scraper/backend/companies.db "PRAGMA integrity_check;"
+
+# Recréer la BDD (⚠️ perte de données)
+rm ~/maps-scraper/backend/companies.db
+# Relancer le scraper pour recréer
 ```
 
 ---
 
-## ⚠️ Avertissements légaux
+## 📚 Documentation
 
-- **Usage personnel/éducatif uniquement**
-- Respectez les CGU de Google Maps
-- Respectez le RGPD et la LPD suisse
-- Données publiques uniquement
-- Ne pas utiliser à des fins commerciales sans autorisation
+- **Installation** : `docs/INSTALL.md`
+- **Mise à jour** : `docs/UPDATE.md`
+- **Changement mot de passe** : `docs/CHANGE_PASSWORD.md`
+- **Structure projet** : `PROJECT_STRUCTURE.md`
 
 ---
 
-## 🤝 Contribution
+## 🎯 Zones de scraping
 
-Les contributions sont les bienvenues !
+### Canton de Neuchâtel (priorité)
+- Neuchâtel, La Chaux-de-Fonds, Le Locle
+- Val-de-Ruz, Val-de-Travers, Fleurier
+- Cernier, Peseux, Colombier
+- Marin-Epagnier, Saint-Blaise, Boudry, Cressier
 
-1. Fork le projet
-2. Créer une branche (`git checkout -b feature/amelioration`)
-3. Commit (`git commit -m 'Ajout fonctionnalité'`)
-4. Push (`git push origin feature/amelioration`)
-5. Ouvrir une Pull Request
+### Villes proches (hors canton)
+- Yverdon-les-Bains, Pontarlier, Morteau, Besançon
+
+### Autres Suisse Romande
+- Genève, Lausanne, Fribourg, Sion
+- Nyon, Renens, Meyrin, Plan-les-Ouates
+- Martigny, Vevey, Montreux
+- Delémont, Porrentruy
+
+---
+
+## 🔍 Mots-clés de recherche
+
+### Développement web & digital
+- Agence Web, Développement logiciel, Conception de sites web
+- Création site internet, Agence digitale, Web design
+- Développeur web, Intégrateur web, UX Designer
+
+### Développement spécialisé
+- Full Stack, Frontend developer, Backend developer
+- App development, Mobile app, Application mobile
+- E-commerce, Site e-commerce, Boutique en ligne
+
+### Software & SaaS
+- Éditeur de logiciels, Software development, SaaS company
+- Startup tech, Tech startup, Scale-up
+
+### Sécurité & infrastructure
+- Cybersécurité, Sécurité informatique, Consultant IT
+- Consultant informatique, Services informatiques entreprises
+- Cloud provider, DevOps, Infrastructure IT
+
+### Marketing digital
+- SEO, Référencement web, Marketing digital
+- Social media management, Community manager
+
+### Data & IA
+- Data science, Intelligence artificielle, Machine Learning
+- Big Data, Data analyst
+
+---
+
+## 📞 Support
+
+Pour toute question ou problème :
+1. Consulter les docs (`docs/`)
+2. Vérifier les logs (`sudo journalctl -u scraper-web -f`)
+3. Regarder dans le dépannage ci-dessus
 
 ---
 
 ## 📝 Licence
 
-Ce projet est fourni à des fins éducatives. Utilisez-le de manière responsable.
+Projet privé - Tous droits réservés
 
 ---
 
-## 🆘 Support
+## 🔮 Évolutions futures possibles
 
-- 📖 [Documentation complète](docs/)
-- 🐛 [Issues GitHub](https://github.com/VOTRE_USERNAME/maps-scrap/issues)
-- 💬 [Discussions](https://github.com/VOTRE_USERNAME/maps-scrap/discussions)
+- [ ] Second bot d'enrichissement (LinkedIn, Pappers, etc.)
+- [ ] Export Excel en plus du CSV
+- [ ] Filtres avancés (par note Google, nombre d'avis)
+- [ ] Notifications email en fin de scraping
+- [ ] API REST publique
+- [ ] Dashboard analytics avancé
+- [ ] Gestion multi-utilisateurs
+- [ ] Système de tags personnalisés
+- [ ] Détection automatique des doublons
+- [ ] Intégration CRM (HubSpot, Salesforce)
 
 ---
 
-**Fait avec ❤️ pour le canton de Neuchâtel et la Suisse Romande**
+**Version** : 1.0.0  
+**Dernière mise à jour** : Décembre 2024  
+**Auteur** : Votre nom/société

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OSINT Enrichissement</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h2>OSINT Enrichissement</h2>
+        <p>Pipeline gratuit (WhatWeb, theHarvester, subfinder, WHOIS, Wayback)</p>
+      </div>
+      <div class="status" id="statusText">...</div>
+    </header>
+
+    <div class="cards">
+      <div class="card">
+        <h3>Contrôles</h3>
+        <div class="filters">
+          <label>Ville
+            <select id="cityFilter" class="input"></select>
+          </label>
+          <label>Limite
+            <input id="limitInput" type="number" class="input" value="50" min="1" max="500">
+          </label>
+          <label>
+            <input type="checkbox" id="requireWebsite" checked>
+            Exiger un site web
+          </label>
+        </div>
+        <div style="margin-top:12px; display:flex; gap:10px;">
+          <button id="btnStart" class="btn btn-success">Démarrer</button>
+          <button id="btnStop" class="btn btn-danger" disabled>Arrêter</button>
+        </div>
+        <p style="margin-top:10px;">Progression : <span id="progressText">0/0</span></p>
+      </div>
+
+      <div class="card">
+        <h3>Instructions outils</h3>
+        <ul>
+          <li>Installer whatweb, theHarvester, subfinder, amass, pdfgrep, whois, curl</li>
+          <li>Assurez-vous que le PATH systemd inclut ces binaires</li>
+          <li>Le pipeline met à jour directement companies.db</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Logs</h3>
+      <div class="logs" id="logBox"></div>
+    </div>
+  </div>
+
+  <script src="/script.js"></script>
+</body>
+</html>
+

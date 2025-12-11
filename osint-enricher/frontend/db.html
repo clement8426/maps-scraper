@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exploration BDD</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h2>Exploration BDD (companies.db)</h2>
+        <p>Filtrer, parcourir, exporter (lecture seule par défaut)</p>
+      </div>
+      <div class="status">Lecture</div>
+    </header>
+
+    <div class="card">
+      <h3>Filtres</h3>
+      <div class="filters">
+        <label>Ville
+          <select id="dbCity" class="input"></select>
+        </label>
+        <label>Status OSINT
+          <select id="dbStatus" class="input">
+            <option value="">Tous</option>
+            <option value="Done">Done</option>
+            <option value="Skipped">Skipped</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="dbHasWebsite"> Avec site web</label>
+        <label><input type="checkbox" id="dbHasEmail"> Avec email</label>
+        <button id="dbExport" class="btn btn-outline">Exporter CSV</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Résultats</h3>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Entreprise</th>
+            <th>Ville</th>
+            <th>Site</th>
+            <th>Email</th>
+            <th>Stack</th>
+            <th>Status</th>
+            <th>Maj OSINT</th>
+          </tr>
+        </thead>
+        <tbody id="dbRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/script.js"></script>
+</body>
+</html>
+
