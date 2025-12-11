@@ -166,13 +166,23 @@ class OsintPipeline:
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
         if not domain:
             return None
-        res = self.run_cmd(["whatweb", domain, "--log-brief=-"])
+        res = self.run_cmd(["whatweb", domain, "--log-brief=-", "--no-errors"])
         if not res:
             return None
-        top = res.splitlines()[:5]
-        result = "; ".join(top)
-        log(f"  ✅ WhatWeb: {result[:80]}...")
-        return result
+        
+        # Nettoyer les codes ANSI de couleur
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        cleaned = ansi_escape.sub('', res)
+        
+        # Extraire les informations pertinentes
+        lines = [l.strip() for l in cleaned.splitlines() if l.strip()]
+        
+        # Limiter la taille et nettoyer
+        result = " | ".join(lines[:3])[:500]
+        
+        if result:
+            log(f"  ✅ WhatWeb: OK")
+        return result if result else None
 
     def run_email_tools(self, website):
         if not website:

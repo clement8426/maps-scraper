@@ -105,11 +105,28 @@ header {
 .table {
   width: 100%;
   border-collapse: collapse;
+  display: block;
+  max-height: 600px;
+  overflow-y: auto;
+}
+.table thead {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+.table tbody {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
 }
 .table th, .table td {
   padding: 10px;
   border-bottom: 1px solid var(--border);
   text-align: left;
+  word-wrap: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
 }
 .badge {
   padding: 4px 8px;
