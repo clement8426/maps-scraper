@@ -119,7 +119,7 @@ class OsintPipeline:
             whois_raw = self.run_whois(website)
             wayback_urls = self.run_wayback(website)
 
-            log(f"  → Mise à jour BDD pour {name}")
+            log(f"  → Sauvegarde en BDD pour {name}...")
             self.update_company(
                 cid,
                 tech_stack=tech_stack,
@@ -129,7 +129,7 @@ class OsintPipeline:
                 whois_raw=whois_raw,
                 wayback_urls=wayback_urls,
             )
-            log(f"  ✅ {name} terminé")
+            log(f"  ✅ {name} terminé et sauvegardé en BDD")
             time.sleep(1.0)
 
         self.status["processed"] = min(self.status.get("processed", 0), total)
@@ -347,7 +347,40 @@ class OsintPipeline:
             log(f"  ℹ️  Subfinder: aucun sous-domaine trouvé")
             return None
         
-        subs = [line.strip() for line in res.splitlines() if line.strip()]
+        # Nettoyer les codes ANSI
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        cleaned_res = ansi_escape.sub('', res)
+        
+        # Extraire uniquement les lignes qui sont des domaines valides
+        # Ignorer les lignes de debug, erreurs, etc.
+        subs = []
+        for line in cleaned_res.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Ignorer les lignes qui sont clairement du debug/info (commencent par [ ou contiennent des mots-clés)
+            if line.startswith('[') or line.startswith('('):
+                continue
+            if any(skip in line.lower() for skip in [
+                'current subfinder version',
+                '[inf]',
+                '[warn]',
+                '[error]',
+                'using source',
+                'timeout',
+                'failed to',
+                'no results found'
+            ]):
+                continue
+            
+            # Vérifier que c'est un domaine valide (contient un point, pas d'espaces, pas de caractères spéciaux)
+            if '.' in line and ' ' not in line and not line.startswith('['):
+                # Vérifier le format d'un domaine (lettres, chiffres, points, tirets)
+                if re.match(r'^[a-zA-Z0-9.-]+$', line):
+                    # Vérifier que c'est un sous-domaine du domaine cible
+                    if domain.lower() in line.lower():
+                        subs.append(line.lower())  # Normaliser en minuscules
         
         if subs:
             # Dédupliquer et trier
@@ -356,6 +389,7 @@ class OsintPipeline:
             # Limiter à 100 sous-domaines pour éviter des strings trop longues en BDD
             return ", ".join(unique_subs[:100]) if unique_subs else None
         
+        log(f"  ℹ️  Subfinder: aucun sous-domaine valide trouvé")
         return None
 
     def run_whois(self, website):
@@ -454,12 +488,24 @@ class OsintPipeline:
 
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
+        
+        # Vérifier d'abord si l'ID existe
+        cur.execute("SELECT id, company_name FROM companies WHERE id = ?", (cid,))
+        existing = cur.fetchone()
+        
+        if not existing:
+            log(f"     ❌ ERREUR: ID {cid} introuvable dans la BDD !")
+            conn.close()
+            return
+        
         sql_query = f"UPDATE companies SET {', '.join(set_parts)} WHERE id = ?"
-        log(f"     [DEBUG] SQL: UPDATE companies SET ... WHERE id = {cid}")
         cur.execute(sql_query, params)
         rows_affected = cur.rowcount
-        conn.commit()
+        conn.commit()  # ⚡ COMMIT IMMÉDIAT - données sauvegardées maintenant !
         conn.close()
         
-        log(f"     [DEBUG] {rows_affected} ligne(s) mise(s) à jour dans {self.db_path}")
+        if rows_affected > 0:
+            log(f"     ✅ Sauvegarde réussie : {rows_affected} ligne(s) mise(s) à jour")
+        else:
+            log(f"     ⚠️  Aucune ligne mise à jour pour ID {cid} (entreprise: {existing[1]})")
 
