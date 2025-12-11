@@ -29,6 +29,44 @@ Server: Apache | WordPress 6.2 | jQuery 3.7.1 | Pays: CH | IP: 128.65.195.18
 
 ---
 
+## 📧 theHarvester - Collecte d'Emails
+
+### Ce qu'il fait
+theHarvester collecte des adresses email associées à un domaine en interrogeant des sources publiques (moteurs de recherche, réseaux sociaux, bases de données publiques).
+
+### Sources utilisées
+- **Google** : Recherche d'emails dans les pages indexées
+- **Bing** : Recherche alternative
+- **LinkedIn** : Profils professionnels
+- **Twitter** : Mentions publiques
+- **Pastebin** : Fuites de données publiques
+- **Shodan** : Base de données d'appareils connectés
+- **Certificats SSL** : Emails dans les certificats
+
+### Informations collectées
+- Emails professionnels : `contact@example.com`, `info@example.com`
+- Emails personnels : `prenom.nom@example.com`
+- Emails techniques : `admin@example.com`, `support@example.com`
+- Emails de départements : `sales@example.com`, `hr@example.com`
+
+### Exemple de résultat
+```
+contact@example.com, info@example.com, admin@example.com, sales@example.com
+```
+
+### Utilité
+- Enrichir la base de contacts pour prospection
+- Identifier les bonnes personnes à contacter
+- Compléter les emails manquants du scraper principal
+- Découvrir des adresses non listées publiquement
+
+### Limitations
+- Les résultats dépendent de l'indexation des moteurs de recherche
+- Certaines sources peuvent être limitées (rate limiting)
+- Les emails trouvés doivent être vérifiés (peuvent être obsolètes)
+
+---
+
 ## 🔍 Subfinder - Découverte de Sous-domaines
 
 ### Ce qu'il fait
@@ -141,10 +179,11 @@ Interroge l'API d'archive.org pour récupérer les URLs archivées d'un site web
 
 ### Ordre d'exécution
 1. **WhatWeb** → Identification rapide des technologies
-2. **Subfinder** → Découverte de sous-domaines
-3. **Amass** → Cartographie avancée
-4. **WHOIS** → Informations d'enregistrement
-5. **Wayback** → Archives historiques
+2. **theHarvester** → Collecte d'emails depuis sources publiques
+3. **Subfinder** → Découverte de sous-domaines
+4. **Amass** → Cartographie avancée
+5. **WHOIS** → Informations d'enregistrement
+6. **Wayback** → Archives historiques
 
 ### Timing
 - **1 entreprise** : 20-40 secondes
@@ -203,6 +242,7 @@ Ces outils sont conçus pour :
 ## 📚 Ressources
 
 - **WhatWeb** : https://github.com/urbanadventurer/WhatWeb
+- **theHarvester** : https://github.com/laramies/theHarvester
 - **Subfinder** : https://github.com/projectdiscovery/subfinder
 - **Amass** : https://github.com/owasp-amass/amass
 - **WHOIS** : Standard IETF RFC 3912
