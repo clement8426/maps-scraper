@@ -270,17 +270,20 @@ class OsintPipeline:
         domain = website.replace("https://", "").replace("http://", "").split("/")[0]
         emails = set()
         
-        # theHarvester avec toutes les sources et limite élevée
+        # theHarvester avec sources spécifiques (Google non supporté)
         if self.available_tools.get("theHarvester"):
-            # Commande complète : -d domaine, -b toutes sources, -l limite résultats
+            # Sources qui fonctionnent bien (sans Google)
+            sources = "bing,duckduckgo,yahoo,baidu,crtsh,certspotter,hackertarget,rapiddns,subdomaincenter,urlscan"
+            
+            # Commande complète : -d domaine, -b sources spécifiques, -l limite résultats
             cmd = [
                 "theHarvester",
                 "-d", domain,
-                "-b", "all",        # Toutes les sources (google, bing, linkedin, etc.)
+                "-b", sources,      # Sources fonctionnelles sans Google
                 "-l", "500"         # Limite de 500 résultats par source
             ]
             
-            log(f"  🔍 theHarvester: scan de {domain} (toutes sources, limit=500)...")
+            log(f"  🔍 theHarvester: scan de {domain} (10 sources, limit=500)...")
             
             # Exécuter avec timeout généreux (5 minutes comme dans votre script)
             result = self.run_cmd(cmd, allow_nonzero=True, timeout=300)
