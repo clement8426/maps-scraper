@@ -2,7 +2,8 @@ const api = {
   start: (payload = {}) => fetch('/api/enrich/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)}).then(r=>r.json()),
   stop: () => fetch('/api/enrich/stop', {method:'POST'}).then(r=>r.json()),
   status: () => fetch('/api/enrich/status').then(r=>r.json()),
-  logs: () => fetch('/api/enrich/logs').then(r=>r.json()),
+  getToken: () => fetch('/api/auth/token').then(r=>r.json()), // Récupérer le token après auth
+  // logs() n'est plus utilisé - on utilise SSE maintenant
   companies: (params={}) => {
     const qs = new URLSearchParams(params).toString();
     return fetch('/api/db/companies?' + qs).then(r=>r.json());
