@@ -2,9 +2,11 @@ import os
 import sqlite3
 import threading
 import time
+import queue
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from flask import Flask, jsonify, request, send_from_directory, send_file
+from flask import Flask, jsonify, request, send_from_directory, send_file, Response, stream_with_context
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -44,6 +46,8 @@ def get_db_connection():
 # ---------- OSINT PIPELINE CONTROL ----------
 pipeline_lock = threading.Lock()
 pipeline_runner = {"thread": None, "stop_flag": False, "status": {}}
+# Queue partagée pour les logs en temps réel (SSE)
+logs_queue = queue.Queue(maxsize=1000)  # Limite à 1000 lignes pour éviter la surcharge mémoire
 
 
 @app.route("/api/enrich/start", methods=["POST"])
@@ -71,10 +75,17 @@ def start_enrich():
         def runner():
             try:
                 db_path = os.getenv("DATABASE_PATH", DEFAULT_DB)
+                # Vider la queue avant de démarrer un nouveau scan
+                while not logs_queue.empty():
+                    try:
+                        logs_queue.get_nowait()
+                    except:
+                        break
                 pipe = OsintPipeline(
                     db_path=db_path,
                     status_ref=pipeline_runner["status"],
-                    stop_flag_ref=lambda: pipeline_runner["stop_flag"]
+                    stop_flag_ref=lambda: pipeline_runner["stop_flag"],
+                    logs_queue_ref=logs_queue
                 )
                 pipe.run(city=city, limit=limit, require_website=require_website)
             finally:
@@ -124,20 +135,46 @@ def enrich_status():
 
 
 @app.route("/api/enrich/logs", methods=["GET"])
-@auth.login_required
 def enrich_logs():
-    # Le log est créé dans backend/pipeline.log par pipeline.py
-    log_path = os.path.join(os.path.dirname(__file__), "pipeline.log")
-    if not os.path.exists(log_path):
-        return jsonify({"lines": ["[INFO] Fichier de log non trouvé. Les logs apparaîtront ici après le premier lancement.\n"]})
-    try:
-        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
-            lines = f.readlines()[-400:]
-        if not lines:
-            return jsonify({"lines": ["[INFO] Fichier de log vide. Lancez le pipeline pour voir les logs.\n"]})
-        return jsonify({"lines": lines})
-    except Exception as e:
-        return jsonify({"lines": [f"[ERREUR] Impossible de lire les logs: {str(e)}\n"]})
+    """Endpoint SSE pour streamer les logs en temps réel
+    Note: EventSource ne supporte pas HTTP Basic Auth, donc on utilise un token simple
+    """
+    # Vérification simple du token (pour sécurité basique)
+    token = request.args.get('token')
+    expected_token = os.getenv("WEB_PASSWORD", "admin")  # Utilise le même mot de passe que l'auth
+    
+    if token != expected_token:
+        return Response("Unauthorized", status=401)
+    
+    def generate():
+        """Générateur pour Server-Sent Events"""
+        # Envoyer un message de connexion
+        yield f"data: {json.dumps({'type': 'connected', 'message': 'Connexion au streaming de logs établie'})}\n\n"
+        
+        # Lire les logs depuis la queue
+        while True:
+            try:
+                # Attendre un nouveau log (timeout de 30s pour garder la connexion alive)
+                try:
+                    log_line = logs_queue.get(timeout=30)
+                    # Formater pour SSE
+                    yield f"data: {json.dumps({'type': 'log', 'message': log_line})}\n\n"
+                except queue.Empty:
+                    # Envoyer un heartbeat pour garder la connexion ouverte
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                break
+    
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',  # Désactive le buffering nginx
+            'Connection': 'keep-alive'
+        }
+    )
 
 
 # ---------- DB VIEWER ----------

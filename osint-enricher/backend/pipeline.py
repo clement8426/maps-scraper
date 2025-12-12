@@ -42,21 +42,45 @@ except ImportError:
 
 LOG_PATH = os.path.join(os.path.dirname(__file__), "pipeline.log")
 
+# Queue globale pour les logs en temps réel (sera initialisée par app.py)
+logs_queue_ref = None
+
 
 def log(msg):
     ts = datetime.now(ZoneInfo("Europe/Paris")).strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] {msg}"
     print(line, flush=True)
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
+    
+    # Écrire dans le fichier (pour compatibilité)
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass  # Ignore les erreurs d'écriture fichier
+    
+    # Écrire dans la queue pour streaming temps réel (SSE)
+    if logs_queue_ref is not None:
+        try:
+            # Si la queue est pleine, enlever l'ancien élément
+            if logs_queue_ref.full():
+                try:
+                    logs_queue_ref.get_nowait()
+                except:
+                    pass
+            logs_queue_ref.put_nowait(line)
+        except Exception:
+            pass  # Ignore les erreurs de queue (non bloquant)
 
 
 class OsintPipeline:
-    def __init__(self, db_path, status_ref, stop_flag_ref):
+    def __init__(self, db_path, status_ref, stop_flag_ref, logs_queue_ref=None):
         self.db_path = db_path
         self.status = status_ref
         self.stop_flag = stop_flag_ref
         self.available_tools = {}
+        # Initialiser la queue globale pour les logs
+        global logs_queue_ref
+        logs_queue_ref = logs_queue_ref
         self.check_tools()
         self.ensure_columns()
     

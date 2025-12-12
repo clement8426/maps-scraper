@@ -97,27 +97,73 @@ async function initEnrichPage() {
     }
   }
 
-  async function refreshLogs() {
-    try {
-      const res = await api.logs();
-      if (res.lines && res.lines.length > 0) {
-        // Filtrer les logs : garder seulement les 100 dernières lignes
-        const recentLines = res.lines.slice(-100);
-        
-        // Formater chaque ligne pour enlever les doublons de timestamp
-        const formattedLines = recentLines.map(line => {
-          // Nettoyer les lignes vides multiples
-          return line.trim() ? line : '';
-        }).filter(line => line !== '');
-        
-        logBox.textContent = formattedLines.join('\n');
-        logBox.scrollTop = logBox.scrollHeight; // Auto-scroll en bas
-      } else {
-        logBox.textContent = 'Aucun log pour le moment. Les logs apparaîtront ici quand le pipeline sera lancé.';
-      }
-    } catch (e) {
-      logBox.textContent = `Erreur chargement logs: ${e.message}`;
+  // Streaming des logs en temps réel via Server-Sent Events (SSE)
+  let eventSource = null;
+  let logsBuffer = []; // Buffer pour garder les 200 dernières lignes
+  const MAX_LOG_LINES = 200;
+  
+  function connectLogsStream() {
+    // Fermer la connexion précédente si elle existe
+    if (eventSource) {
+      eventSource.close();
     }
+    
+    // Créer une nouvelle connexion SSE
+    // Note: EventSource ne supporte pas HTTP Basic Auth, on utilise un token dans l'URL
+    // Le token est le même que le mot de passe (par défaut "admin", configurable via WEB_PASSWORD)
+    // Pour l'instant, on utilise "admin" par défaut (l'utilisateur peut changer via env var)
+    const token = localStorage.getItem('osint_token') || 'admin';
+    const url = `/api/enrich/logs?token=${encodeURIComponent(token)}`;
+    eventSource = new EventSource(url);
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'connected') {
+          console.log('✅ Connexion SSE établie');
+          logBox.textContent = '📡 Connexion au streaming de logs établie...\n';
+        } else if (data.type === 'log') {
+          // Ajouter le log au buffer
+          logsBuffer.push(data.message);
+          
+          // Limiter la taille du buffer
+          if (logsBuffer.length > MAX_LOG_LINES) {
+            logsBuffer.shift(); // Enlever la plus ancienne ligne
+          }
+          
+          // Mettre à jour l'affichage
+          logBox.textContent = logsBuffer.join('\n');
+          logBox.scrollTop = logBox.scrollHeight; // Auto-scroll en bas
+        } else if (data.type === 'heartbeat') {
+          // Heartbeat pour garder la connexion ouverte (on ne fait rien)
+        } else if (data.type === 'error') {
+          console.error('Erreur SSE:', data.message);
+          logBox.textContent += `\n❌ Erreur: ${data.message}`;
+        }
+      } catch (e) {
+        console.error('Erreur parsing SSE:', e);
+      }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('Erreur EventSource:', error);
+      // Tentative de reconnexion automatique après 3 secondes
+      setTimeout(() => {
+        if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+          console.log('Tentative de reconnexion SSE...');
+          connectLogsStream();
+        }
+      }, 3000);
+    };
+  }
+  
+  function disconnectLogsStream() {
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+    logsBuffer = [];
   }
 
   startBtn.onclick = async () => {
@@ -127,6 +173,10 @@ async function initEnrichPage() {
     statusEl.className = 'status status-running';
     startBtn.disabled = true;
     stopBtn.disabled = false;
+    
+    // Vider le buffer de logs et reconnecter le stream
+    logsBuffer = [];
+    connectLogsStream();
     
     await api.start({
       city: citySelect.value || null,
@@ -170,15 +220,16 @@ async function initEnrichPage() {
   
   if (clearLogsBtn) {
     clearLogsBtn.onclick = () => {
+      logsBuffer = [];
       logBox.textContent = 'Logs effacés (les nouveaux logs apparaîtront ici)';
     };
   }
 
   await loadCities();
   await refreshStatus();
-  await refreshLogs();
+  // Démarrer le streaming des logs en temps réel (SSE)
+  connectLogsStream();
   setInterval(refreshStatus, 3000);  // Plus rapide pour détecter la fin
-  setInterval(refreshLogs, 5000);
 }
 
 // ------- DB PAGE -------
