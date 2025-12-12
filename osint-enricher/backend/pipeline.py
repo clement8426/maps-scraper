@@ -3,6 +3,8 @@ import re
 import sqlite3
 import subprocess
 import time
+import json
+import tempfile
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -277,10 +279,11 @@ class OsintPipeline:
     def run_email_tools(self, website):
         """
         Utilise theHarvester pour trouver des emails
-        Inspiré du script de l'utilisateur avec :
-        - Limite de résultats augmentée (-l 500)
-        - Timeout généreux (300s / 5 minutes)
-        - Extraction exhaustive avec regex
+        Inspiré du script local de l'utilisateur avec :
+        - Sources fiables uniquement (bing, duckduckgo, yahoo, brave)
+        - Parsing JSON propre avec fallback texte
+        - Filtrage avancé des emails (exclusion des noreply, abuse, etc.)
+        - Validation stricte
         """
         if not website:
             return None
@@ -289,50 +292,115 @@ class OsintPipeline:
         
         # theHarvester avec sources spécifiques (Google non supporté)
         if self.available_tools.get("theHarvester"):
-            # Sources qui fonctionnent bien (sans Google)
-            sources = "bing,duckduckgo,yahoo,baidu,crtsh,certspotter,hackertarget,rapiddns,subdomaincenter,urlscan"
+            # Sources fiables qui fonctionnent bien (comme dans le script local)
+            sources_list = ['bing', 'duckduckgo', 'yahoo', 'brave']
             
-            # Commande complète : -d domaine, -b sources spécifiques, -l limite résultats
-            cmd = [
-                "theHarvester",
-                "-d", domain,
-                "-b", sources,      # Sources fonctionnelles sans Google
-                "-l", "500"         # Limite de 500 résultats par source
+            # Préparation du domaine pour le filtrage
+            domain_parts = domain.split('.')
+            base_domain = '.'.join(domain_parts[-2:]) if len(domain_parts) >= 2 else domain
+            domain_variations = [domain, base_domain, domain.replace('.', '')]
+            
+            # Patterns d'emails à exclure (comme dans le script local)
+            excluded_patterns = [
+                'noreply', 'no-reply', 'donotreply', 'no_reply',
+                'example.com', 'test.com', 'sample.com', 'domain.com',
+                'abuse@', 'postmaster@', 'hostmaster@', 'webmaster@'
             ]
             
-            log(f"  🔍 theHarvester: scan de {domain} (10 sources, limit=500)...")
+            all_emails = set()
             
-            # Exécuter avec timeout généreux (5 minutes comme dans votre script)
-            result = self.run_cmd(cmd, allow_nonzero=True, timeout=300)
+            log(f"  🔍 theHarvester: scan de {domain} ({len(sources_list)} sources fiables, limit=100)...")
             
-            if result:
-                # Extraction exhaustive : tous les emails trouvés dans la sortie
-                all_emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", result)
+            for source in sources_list:
+                try:
+                    # Crée un fichier temporaire pour les résultats JSON
+                    import tempfile
+                    temp_json = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+                    temp_json_path = temp_json.name
+                    temp_json.close()
+                    
+                    # Commande complète avec génération JSON
+                    cmd = [
+                        "theHarvester",
+                        "-d", domain,
+                        "-b", source,
+                        "-l", "100",        # Limite de 100 résultats par source
+                        "-f", temp_json_path  # Génère un fichier JSON
+                    ]
+                    
+                    # Exécuter avec timeout raisonnable (90s par source)
+                    result = self.run_cmd(cmd, allow_nonzero=True, timeout=90)
+                    
+                    # Essaie d'abord de lire le fichier JSON (méthode propre)
+                    try:
+                        if os.path.exists(temp_json_path + '.json'):
+                            with open(temp_json_path + '.json', 'r') as f:
+                                json_data = json.load(f)
+                                # Extrait les emails depuis le JSON
+                                if 'emails' in json_data:
+                                    all_emails.update([e.lower() for e in json_data['emails']])
+                                # Extrait aussi depuis les hosts (parfois les emails sont là)
+                                if 'hosts' in json_data:
+                                    for host in json_data['hosts']:
+                                        if isinstance(host, dict) and 'email' in host:
+                                            all_emails.add(host['email'].lower())
+                    except Exception as e:
+                        log(f"  ⚠️  Lecture JSON {source} échouée: {str(e)[:50]}")
+                    
+                    # Fallback: parse aussi la sortie texte
+                    if result:
+                        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                        text_emails = re.findall(email_pattern, result)
+                        all_emails.update([e.lower() for e in text_emails])
+                    
+                    # Nettoie le fichier temporaire
+                    try:
+                        os.unlink(temp_json_path)
+                        if os.path.exists(temp_json_path + '.json'):
+                            os.unlink(temp_json_path + '.json')
+                        if os.path.exists(temp_json_path + '.xml'):
+                            os.unlink(temp_json_path + '.xml')
+                    except:
+                        pass
+                    
+                except subprocess.TimeoutExpired:
+                    log(f"  ⚠️  Timeout theHarvester pour source {source}")
+                except Exception as e:
+                    log(f"  ⚠️  Erreur theHarvester {source}: {str(e)[:50]}")
                 
-                # Filtrer pour ne garder que les emails du domaine ciblé
-                domain_emails = [e.lower() for e in all_emails if domain.lower() in e.lower()]
+                # Petit délai entre les sources
+                time.sleep(1)
+            
+            # Filtrage avancé des emails (comme dans le script local)
+            valid_emails = []
+            for email in all_emails:
+                email_lower = email.lower()
+                email_domain = email_lower.split('@')[1] if '@' in email_lower else ''
                 
-                # Ajouter aussi les emails du sous-domaine (ex: subdomain.example.com)
-                for email in all_emails:
-                    email_lower = email.lower()
-                    # Extraire le domaine de l'email
-                    email_domain = email_lower.split('@')[1] if '@' in email_lower else ''
-                    # Si le domaine principal est dans le domaine de l'email
-                    if domain.lower() in email_domain:
-                        emails.add(email_lower)
+                # Vérifie si l'email appartient au domaine (plus flexible)
+                is_domain_email = False
+                for var in domain_variations:
+                    if var in email_domain or email_domain.endswith('.' + var):
+                        is_domain_email = True
+                        break
                 
-                # Statistiques
-                if emails:
-                    log(f"  ✅ theHarvester: {len(emails)} email(s) du domaine {domain}")
-                else:
-                    # Afficher les emails trouvés même s'ils ne sont pas du domaine
-                    if all_emails:
-                        other_emails = [e for e in all_emails if domain.lower() not in e.lower()]
-                        log(f"  ℹ️  theHarvester: {len(all_emails)} email(s) total, {len(other_emails)} externe(s)")
-                    else:
-                        log(f"  ℹ️  theHarvester: scan terminé (aucun email trouvé)")
+                if is_domain_email:
+                    # Exclut les emails génériques et techniques
+                    if not any(pattern in email_lower for pattern in excluded_patterns):
+                        # Exclut les emails trop courts ou suspects
+                        if len(email_lower) > 5 and '.' in email_domain:
+                            valid_emails.append(email_lower)
+            
+            emails.update(valid_emails)
+            
+            # Statistiques
+            if emails:
+                log(f"  ✅ theHarvester: {len(emails)} email(s) valide(s) pour {domain}")
             else:
-                log(f"  ⚠️  theHarvester: aucun résultat")
+                if all_emails:
+                    log(f"  ℹ️  theHarvester: {len(all_emails)} email(s) trouvé(s), 0 valide après filtrage")
+                else:
+                    log(f"  ℹ️  theHarvester: scan terminé (aucun email trouvé)")
         
         result = ", ".join(sorted(emails)) if emails else None
         return result
