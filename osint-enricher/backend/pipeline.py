@@ -192,79 +192,134 @@ class OsintPipeline:
             log(f"🌐 Site: {website}")
             log("=" * 60)
 
-            # Méthode 1: WhatWeb (tech stack)
-            tech_stack = self.run_whatweb(website)
-            
-            # Méthode 2: theHarvester (emails)
-            emails_osint = self.run_email_tools(website)
-            
-            # Méthode 3: Web Scraping (About/Team/Contact)
-            web_scraping_result = self.run_web_scraping(website)
-            if web_scraping_result:
-                # Fusionner les emails trouvés
-                if web_scraping_result.get('emails'):
+            # Initialiser les variables par défaut
+            tech_stack = None
+            emails_osint = None
+            pdf_emails = None
+            subdomains = None
+            wayback_urls = None
+            whois_raw = None
+            osint_employees = None
+            osint_html_comments = None
+            osint_github_data = None
+            osint_social_data = None
+            web_scraping_result = None
+            pdf_result = None
+            google_dorks_result = None
+            subdomain_scraping_result = None
+            whois_result = None
+            social_data = None
+            html_comments_result = None
+            github_data = None
+            robots_sitemap_result = None
+
+            # Wrapper pour capturer toutes les exceptions et continuer
+            try:
+                # Méthode 1: WhatWeb (tech stack)
+                log("  🔍 Démarrage WhatWeb...")
+                tech_stack = self.run_whatweb(website)
+                log(f"  ✅ WhatWeb terminé")
+                
+                # Méthode 2: theHarvester (emails)
+                log("  🔍 Démarrage theHarvester...")
+                emails_osint = self.run_email_tools(website)
+                log(f"  ✅ theHarvester terminé")
+                
+                # Méthode 3: Web Scraping (About/Team/Contact)
+                log("  🔍 Démarrage Web Scraping...")
+                web_scraping_result = self.run_web_scraping(website)
+                log(f"  ✅ Web Scraping terminé")
+                if web_scraping_result:
+                    # Fusionner les emails trouvés
+                    if web_scraping_result.get('emails'):
+                        existing_emails = set((emails_osint or "").split(", "))
+                        existing_emails.update(web_scraping_result['emails'])
+                        emails_osint = ", ".join(sorted(existing_emails))
+                
+                # Méthode 4: Extraction PDF
+                log("  🔍 Démarrage Extraction PDF...")
+                pdf_result = self.run_pdf_extraction(website)
+                if pdf_result:
+                    pdf_emails = pdf_result.get('emails')
+                    if pdf_emails:
+                        existing_emails = set((emails_osint or "").split(", "))
+                        existing_emails.update(pdf_result['emails'])
+                        emails_osint = ", ".join(sorted(existing_emails))
+                else:
+                    pdf_emails = None
+                log(f"  ✅ Extraction PDF terminé")
+                
+                # Méthode 5: Google Dorks
+                log("  🔍 Démarrage Google Dorks...")
+                google_dorks_result = self.run_google_dorks(website, name)
+                if google_dorks_result and google_dorks_result.get('emails'):
                     existing_emails = set((emails_osint or "").split(", "))
-                    existing_emails.update(web_scraping_result['emails'])
+                    existing_emails.update(google_dorks_result['emails'])
                     emails_osint = ", ".join(sorted(existing_emails))
-            
-            # Méthode 4: Extraction PDF
-            pdf_result = self.run_pdf_extraction(website)
-            if pdf_result:
-                pdf_emails = pdf_result.get('emails')
-                if pdf_emails:
+                log(f"  ✅ Google Dorks terminé")
+                
+                # Méthode 6: Subdomain Scraping manuel
+                log("  🔍 Démarrage Subdomain Scraping...")
+                subdomain_scraping_result = self.run_subdomain_scraping(website)
+                if subdomain_scraping_result and subdomain_scraping_result.get('emails'):
                     existing_emails = set((emails_osint or "").split(", "))
-                    existing_emails.update(pdf_result['emails'])
+                    existing_emails.update(subdomain_scraping_result['emails'])
                     emails_osint = ", ".join(sorted(existing_emails))
-            else:
-                pdf_emails = None
-            
-            # Méthode 5: Google Dorks
-            google_dorks_result = self.run_google_dorks(website, name)
-            if google_dorks_result and google_dorks_result.get('emails'):
-                existing_emails = set((emails_osint or "").split(", "))
-                existing_emails.update(google_dorks_result['emails'])
-                emails_osint = ", ".join(sorted(existing_emails))
-            
-            # Méthode 6: Subdomain Scraping manuel
-            subdomain_scraping_result = self.run_subdomain_scraping(website)
-            if subdomain_scraping_result and subdomain_scraping_result.get('emails'):
-                existing_emails = set((emails_osint or "").split(", "))
-                existing_emails.update(subdomain_scraping_result['emails'])
-                emails_osint = ", ".join(sorted(existing_emails))
-            
-            # Méthode 7: Subfinder (sous-domaines)
-            subdomains = self.run_subfinder(website)
-            
-            # Méthode 8: Wayback Machine
-            wayback_urls = self.run_wayback(website)
-            
-            # Méthode 9: WHOIS Parsing (amélioré pour emails et noms)
-            whois_result = self.run_whois_enhanced(website)
-            whois_raw = whois_result.get('raw') if whois_result else None
-            if whois_result and whois_result.get('emails'):
-                existing_emails = set((emails_osint or "").split(", "))
-                existing_emails.update(whois_result['emails'])
-                emails_osint = ", ".join(sorted(existing_emails))
-            
-            # Méthode 10: Réseaux sociaux
-            social_data = self.run_social_media_scraping(website, social_links)
-            
-            # Méthode 11: Commentaires HTML
-            html_comments_result = self.run_html_comments(website)
-            if html_comments_result and html_comments_result.get('emails'):
-                existing_emails = set((emails_osint or "").split(", "))
-                existing_emails.update(html_comments_result['emails'])
-                emails_osint = ", ".join(sorted(existing_emails))
-            
-            # Méthode 12: GitHub Scraping
-            github_data = self.run_github_scraping(website, name)
-            
-            # Méthode 13: Robots.txt/Sitemap
-            robots_sitemap_result = self.run_robots_sitemap(website)
-            if robots_sitemap_result and robots_sitemap_result.get('emails'):
-                existing_emails = set((emails_osint or "").split(", "))
-                existing_emails.update(robots_sitemap_result['emails'])
-                emails_osint = ", ".join(sorted(existing_emails))
+                log(f"  ✅ Subdomain Scraping terminé")
+                
+                # Méthode 7: Subfinder (sous-domaines)
+                log("  🔍 Démarrage Subfinder...")
+                subdomains = self.run_subfinder(website)
+                log(f"  ✅ Subfinder terminé")
+                
+                # Méthode 8: Wayback Machine
+                log("  🔍 Démarrage Wayback Machine...")
+                wayback_urls = self.run_wayback(website)
+                log(f"  ✅ Wayback Machine terminé")
+                
+                # Méthode 9: WHOIS Parsing (amélioré pour emails et noms)
+                log("  🔍 Démarrage WHOIS Enhanced...")
+                whois_result = self.run_whois_enhanced(website)
+                whois_raw = whois_result.get('raw') if whois_result else None
+                if whois_result and whois_result.get('emails'):
+                    existing_emails = set((emails_osint or "").split(", "))
+                    existing_emails.update(whois_result['emails'])
+                    emails_osint = ", ".join(sorted(existing_emails))
+                log(f"  ✅ WHOIS Enhanced terminé")
+                
+                # Méthode 10: Réseaux sociaux
+                log("  🔍 Démarrage Scraping Réseaux sociaux...")
+                social_data = self.run_social_media_scraping(website, social_links)
+                log(f"  ✅ Réseaux sociaux terminé")
+                
+                # Méthode 11: Commentaires HTML
+                log("  🔍 Démarrage Extraction Commentaires HTML...")
+                html_comments_result = self.run_html_comments(website)
+                if html_comments_result and html_comments_result.get('emails'):
+                    existing_emails = set((emails_osint or "").split(", "))
+                    existing_emails.update(html_comments_result['emails'])
+                    emails_osint = ", ".join(sorted(existing_emails))
+                log(f"  ✅ Commentaires HTML terminé")
+                
+                # Méthode 12: GitHub Scraping
+                log("  🔍 Démarrage GitHub Scraping...")
+                github_data = self.run_github_scraping(website, name)
+                log(f"  ✅ GitHub Scraping terminé")
+                
+                # Méthode 13: Robots.txt/Sitemap
+                log("  🔍 Démarrage Robots.txt/Sitemap...")
+                robots_sitemap_result = self.run_robots_sitemap(website)
+                if robots_sitemap_result and robots_sitemap_result.get('emails'):
+                    existing_emails = set((emails_osint or "").split(", "))
+                    existing_emails.update(robots_sitemap_result['emails'])
+                    emails_osint = ", ".join(sorted(existing_emails))
+                log(f"  ✅ Robots.txt/Sitemap terminé")
+                
+            except Exception as e:
+                log(f"  ❌ ERREUR lors de l'enrichissement: {str(e)}")
+                import traceback
+                log(f"  📋 Traceback: {traceback.format_exc()[:500]}")
+                # Continuer quand même avec les données collectées jusqu'ici
             
             # Collecter tous les employés trouvés
             all_employees = set()
