@@ -5,8 +5,40 @@ import subprocess
 import time
 import json
 import tempfile
+import io
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from urllib.parse import urlparse, urljoin, quote
+
+# Imports optionnels pour les méthodes avancées
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
+
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    BS4_AVAILABLE = False
+
+try:
+    import PyPDF2
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
+try:
+    from selenium import webdriver
+    from selenium.webdriver.firefox.options import Options as FirefoxOptions
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import TimeoutException, WebDriverException
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
 
 LOG_PATH = os.path.join(os.path.dirname(__file__), "pipeline.log")
 
@@ -54,6 +86,11 @@ class OsintPipeline:
             ("wayback_urls", "TEXT"),
             ("osint_status", "TEXT"),
             ("osint_updated_at", "TEXT"),
+            # Nouvelles colonnes pour les 11 méthodes OSINT
+            ("osint_employees", "TEXT"),  # Noms d'employés trouvés
+            ("osint_html_comments", "TEXT"),  # Emails depuis commentaires HTML
+            ("osint_github_data", "TEXT"),  # Données GitHub
+            ("osint_social_data", "TEXT"),  # Données réseaux sociaux
         ]
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
@@ -78,7 +115,7 @@ class OsintPipeline:
 
         where_clause = "WHERE " + " AND ".join(filters)
         query = f"""
-            SELECT id, company_name, website, email
+            SELECT id, company_name, website, email, social_links
             FROM companies
             {where_clause}
             ORDER BY id ASC
@@ -112,7 +149,7 @@ class OsintPipeline:
         log(f"✅ {total} cible(s) trouvée(s)")
         log(f"📊 IDs à enrichir: {ids_preview}")
 
-        for idx, (cid, name, website, email) in enumerate(targets, start=1):
+        for idx, (cid, name, website, email, social_links) in enumerate(targets, start=1):
             if self.stop_flag():
                 log("⏸️  Arrêt demandé, sortie propre.")
                 self.status["message"] = "Arrêt demandé"
@@ -129,12 +166,95 @@ class OsintPipeline:
             log(f"🌐 Site: {website}")
             log("=" * 60)
 
+            # Méthode 1: WhatWeb (tech stack)
             tech_stack = self.run_whatweb(website)
+            
+            # Méthode 2: theHarvester (emails)
             emails_osint = self.run_email_tools(website)
-            pdf_emails = self.run_pdf_hunt(website)
+            
+            # Méthode 3: Web Scraping (About/Team/Contact)
+            web_scraping_result = self.run_web_scraping(website)
+            if web_scraping_result:
+                # Fusionner les emails trouvés
+                if web_scraping_result.get('emails'):
+                    existing_emails = set((emails_osint or "").split(", "))
+                    existing_emails.update(web_scraping_result['emails'])
+                    emails_osint = ", ".join(sorted(existing_emails))
+            
+            # Méthode 4: Extraction PDF
+            pdf_result = self.run_pdf_extraction(website)
+            if pdf_result:
+                pdf_emails = pdf_result.get('emails')
+                if pdf_emails:
+                    existing_emails = set((emails_osint or "").split(", "))
+                    existing_emails.update(pdf_result['emails'])
+                    emails_osint = ", ".join(sorted(existing_emails))
+            else:
+                pdf_emails = None
+            
+            # Méthode 5: Google Dorks
+            google_dorks_result = self.run_google_dorks(website, name)
+            if google_dorks_result and google_dorks_result.get('emails'):
+                existing_emails = set((emails_osint or "").split(", "))
+                existing_emails.update(google_dorks_result['emails'])
+                emails_osint = ", ".join(sorted(existing_emails))
+            
+            # Méthode 6: Subdomain Scraping manuel
+            subdomain_scraping_result = self.run_subdomain_scraping(website)
+            if subdomain_scraping_result and subdomain_scraping_result.get('emails'):
+                existing_emails = set((emails_osint or "").split(", "))
+                existing_emails.update(subdomain_scraping_result['emails'])
+                emails_osint = ", ".join(sorted(existing_emails))
+            
+            # Méthode 7: Subfinder (sous-domaines)
             subdomains = self.run_subfinder(website)
-            whois_raw = self.run_whois(website)
+            
+            # Méthode 8: Wayback Machine
             wayback_urls = self.run_wayback(website)
+            
+            # Méthode 9: WHOIS Parsing (amélioré pour emails et noms)
+            whois_result = self.run_whois_enhanced(website)
+            whois_raw = whois_result.get('raw') if whois_result else None
+            if whois_result and whois_result.get('emails'):
+                existing_emails = set((emails_osint or "").split(", "))
+                existing_emails.update(whois_result['emails'])
+                emails_osint = ", ".join(sorted(existing_emails))
+            
+            # Méthode 10: Réseaux sociaux
+            social_data = self.run_social_media_scraping(website, social_links)
+            
+            # Méthode 11: Commentaires HTML
+            html_comments_result = self.run_html_comments(website)
+            if html_comments_result and html_comments_result.get('emails'):
+                existing_emails = set((emails_osint or "").split(", "))
+                existing_emails.update(html_comments_result['emails'])
+                emails_osint = ", ".join(sorted(existing_emails))
+            
+            # Méthode 12: GitHub Scraping
+            github_data = self.run_github_scraping(website, name)
+            
+            # Méthode 13: Robots.txt/Sitemap
+            robots_sitemap_result = self.run_robots_sitemap(website)
+            if robots_sitemap_result and robots_sitemap_result.get('emails'):
+                existing_emails = set((emails_osint or "").split(", "))
+                existing_emails.update(robots_sitemap_result['emails'])
+                emails_osint = ", ".join(sorted(existing_emails))
+            
+            # Collecter tous les employés trouvés
+            all_employees = set()
+            if web_scraping_result and web_scraping_result.get('employees'):
+                all_employees.update(web_scraping_result['employees'])
+            if pdf_result and pdf_result.get('employees'):
+                all_employees.update(pdf_result['employees'])
+            if google_dorks_result and google_dorks_result.get('employees'):
+                all_employees.update(google_dorks_result['employees'])
+            if whois_result and whois_result.get('employees'):
+                all_employees.update(whois_result['employees'])
+            if social_data and social_data.get('employees'):
+                all_employees.update(social_data['employees'])
+            
+            osint_employees = ", ".join(sorted(all_employees)) if all_employees else None
+            osint_html_comments = html_comments_result.get('emails_str') if html_comments_result else None
 
             log("")
             log(f"💾 Sauvegarde en BDD...")
@@ -142,11 +262,15 @@ class OsintPipeline:
             self.update_company(
                 cid,
                 tech_stack=tech_stack,
-                emails_osint=emails_osint,
-                pdf_emails=pdf_emails,
+                emails_osint=emails_osint if emails_osint else None,
+                pdf_emails=pdf_emails if pdf_emails else None,
                 subdomains=subdomains,
                 whois_raw=whois_raw,
                 wayback_urls=wayback_urls,
+                osint_employees=osint_employees,
+                osint_html_comments=osint_html_comments,
+                osint_github_data=github_data,
+                osint_social_data=social_data.get('data_str') if social_data else None,
             )
             log(f"✅ ID {cid} - {name} terminé et sauvegardé en BDD")
             time.sleep(1.0)
@@ -405,10 +529,27 @@ class OsintPipeline:
         result = ", ".join(sorted(emails)) if emails else None
         return result
 
-    def run_pdf_hunt(self, website):
-        domain = website.replace("https://", "").replace("http://", "").split("/")[0]
-        # Simple Google dork via curl to Google may fail; placeholder string
-        return f"See dorks manually for {domain}"
+    def extract_domain(self, url):
+        """Extrait le domaine depuis une URL"""
+        if not url:
+            return ""
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+        try:
+            parsed = urlparse(url)
+            return parsed.netloc.replace('www.', '')
+        except:
+            return url.replace('www.', '').split('/')[0]
+    
+    def get_session(self):
+        """Crée une session requests avec headers"""
+        if not REQUESTS_AVAILABLE:
+            return None
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        return session
 
     def run_subfinder(self, website):
         """
@@ -556,6 +697,512 @@ class OsintPipeline:
         if unique_urls:
             log(f"  ✅ Wayback: {len(unique_urls)} URLs uniques")
         return ", ".join(unique_urls) if unique_urls else None
+
+    # ========== MÉTHODE 2: Web Scraping (About/Team/Contact) ==========
+    def run_web_scraping(self, website):
+        """Scrape les pages About, Team, Contact pour trouver emails et noms"""
+        if not website or not REQUESTS_AVAILABLE or not BS4_AVAILABLE:
+            return None
+        
+        log(f"  🔍 Web Scraping: scan de {website}...")
+        results = {'emails': set(), 'employees': set()}
+        domain = self.extract_domain(website)
+        session = self.get_session()
+        
+        if not session:
+            return None
+        
+        pages_to_check = [
+            '/about', '/about-us', '/team', '/contact', '/contact-us',
+            '/staff', '/employees', '/people', '/equipe', '/a-propos'
+        ]
+        pages_to_check.insert(0, '/')  # Page principale
+        
+        for page in pages_to_check:
+            try:
+                url = urljoin(website, page)
+                response = session.get(url, timeout=10, allow_redirects=True, verify=True)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    
+                    # Extraction des emails
+                    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                    text = soup.get_text()
+                    emails = re.findall(email_pattern, text)
+                    results['emails'].update([e.lower() for e in emails if domain.lower() in e.lower()])
+                    
+                    # Extraction des noms
+                    name_elements = soup.find_all(['h1', 'h2', 'h3', 'h4', 'strong', 'b'])
+                    for elem in name_elements:
+                        text = elem.get_text().strip()
+                        if re.match(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}$', text):
+                            if len(text) > 3 and len(text) < 50:
+                                results['employees'].add(text)
+                    
+                    # Cherche dans les attributs data-*
+                    for tag in soup.find_all(attrs={'data-name': True}):
+                        results['employees'].add(tag['data-name'])
+                
+                time.sleep(1)  # Délai entre les pages
+            except Exception as e:
+                continue
+        
+        if results['emails'] or results['employees']:
+            log(f"  ✅ Web Scraping: {len(results['emails'])} email(s), {len(results['employees'])} employé(s)")
+        
+        return {
+            'emails': results['emails'],
+            'employees': results['employees']
+        } if (results['emails'] or results['employees']) else None
+
+    # ========== MÉTHODE 3: Extraction PDF ==========
+    def run_pdf_extraction(self, website):
+        """Télécharge et extrait les emails depuis les PDFs trouvés sur le site"""
+        if not website or not REQUESTS_AVAILABLE or not BS4_AVAILABLE or not PDF_AVAILABLE:
+            return None
+        
+        log(f"  🔍 Extraction PDF: scan de {website}...")
+        results = {'emails': set(), 'employees': set()}
+        domain = self.extract_domain(website)
+        session = self.get_session()
+        
+        if not session:
+            return None
+        
+        try:
+            response = session.get(website, timeout=10, verify=True)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                pdf_links = []
+                
+                # Trouve tous les liens vers des PDFs
+                for link in soup.find_all('a', href=True):
+                    href = link['href']
+                    if href.lower().endswith('.pdf'):
+                        full_url = urljoin(website, href)
+                        pdf_links.append(full_url)
+                
+                # Limite à 5 PDFs
+                for pdf_url in pdf_links[:5]:
+                    try:
+                        pdf_response = session.get(pdf_url, timeout=15, verify=True)
+                        if pdf_response.status_code == 200:
+                            pdf_file = io.BytesIO(pdf_response.content)
+                            pdf_reader = PyPDF2.PdfReader(pdf_file)
+                            
+                            text = ""
+                            for page in pdf_reader.pages[:5]:  # Limite à 5 pages
+                                text += page.extract_text()
+                            
+                            # Extraction des emails
+                            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                            emails = re.findall(email_pattern, text)
+                            results['emails'].update([e.lower() for e in emails if domain.lower() in e.lower()])
+                            
+                            # Extraction de noms
+                            lines = text.split('\n')
+                            for line in lines:
+                                if re.match(r'^[A-Z][a-z]+\s+[A-Z][a-z]+', line.strip()):
+                                    results['employees'].add(line.strip()[:50])
+                        
+                        time.sleep(1)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        
+        if results['emails'] or results['employees']:
+            log(f"  ✅ Extraction PDF: {len(results['emails'])} email(s), {len(results['employees'])} employé(s)")
+        
+        return {
+            'emails': results['emails'],
+            'employees': results['employees']
+        } if (results['emails'] or results['employees']) else None
+
+    # ========== MÉTHODE 4: Google Dorks ==========
+    def run_google_dorks(self, website, company_name):
+        """Utilise Google Dorks avec Selenium/Firefox pour trouver des emails"""
+        if not website:
+            return None
+        
+        domain = self.extract_domain(website)
+        log(f"  🔍 Google Dorks: scan de {domain}...")
+        results = {'emails': set(), 'employees': set()}
+        
+        driver = None
+        try:
+            if SELENIUM_AVAILABLE:
+                try:
+                    firefox_options = FirefoxOptions()
+                    firefox_options.add_argument('--headless')
+                    firefox_options.add_argument('--no-sandbox')
+                    firefox_options.add_argument('--disable-dev-shm-usage')
+                    firefox_options.set_preference("general.useragent.override", 
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0")
+                    firefox_options.set_preference("dom.webdriver.enabled", False)
+                    firefox_options.set_preference("useAutomationExtension", False)
+                    
+                    driver = webdriver.Firefox(options=firefox_options)
+                    driver.set_page_load_timeout(30)
+                except WebDriverException:
+                    driver = None
+            
+            # Dorks pour trouver des emails
+            dorks = [
+                f'site:{domain} "@{domain}"',
+                f'site:{domain} "email" OR "contact"',
+                f'"{company_name}" "@{domain}"',
+            ]
+            
+            session = self.get_session()
+            for dork in dorks:
+                try:
+                    search_url = f"https://www.google.com/search?q={quote(dork)}&num=20"
+                    
+                    if driver:
+                        try:
+                            driver.get(search_url)
+                            time.sleep(3)
+                            page_source = driver.page_source
+                            soup = BeautifulSoup(page_source, 'html.parser')
+                            text = soup.get_text()
+                            
+                            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                            emails = re.findall(email_pattern, text)
+                            valid_emails = [e.lower() for e in emails if domain.lower() in e.lower()]
+                            results['emails'].update(valid_emails)
+                            
+                            # Extraction de noms
+                            for result_div in soup.find_all(['div', 'h3'], class_=re.compile(r'result|search')):
+                                result_text = result_div.get_text()
+                                name_matches = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b', result_text)
+                                for name in name_matches:
+                                    if len(name) > 3 and len(name) < 50:
+                                        results['employees'].add(name)
+                        except TimeoutException:
+                            pass
+                        except Exception:
+                            pass
+                    elif session:
+                        # Fallback: requests (moins efficace)
+                        response = session.get(search_url, timeout=10, verify=True)
+                        if response.status_code == 200:
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            text = soup.get_text()
+                            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                            emails = re.findall(email_pattern, text)
+                            valid_emails = [e.lower() for e in emails if domain.lower() in e.lower()]
+                            results['emails'].update(valid_emails)
+                    
+                    time.sleep(5)  # Délai pour éviter la détection
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except:
+                    pass
+        
+        if results['emails'] or results['employees']:
+            log(f"  ✅ Google Dorks: {len(results['emails'])} email(s), {len(results['employees'])} employé(s)")
+        
+        return {
+            'emails': results['emails'],
+            'employees': results['employees']
+        } if (results['emails'] or results['employees']) else None
+
+    # ========== MÉTHODE 5: Subdomain Scraping manuel ==========
+    def run_subdomain_scraping(self, website):
+        """Scrape les subdomains communs pour trouver des emails"""
+        if not website or not REQUESTS_AVAILABLE or not BS4_AVAILABLE:
+            return None
+        
+        domain = self.extract_domain(website)
+        log(f"  🔍 Subdomain Scraping: scan de {domain}...")
+        results = {'emails': set()}
+        session = self.get_session()
+        
+        if not session:
+            return None
+        
+        common_subdomains = [
+            'www', 'mail', 'webmail', 'blog', 'news', 'newsletter',
+            'contact', 'about', 'team', 'careers', 'jobs'
+        ]
+        
+        for subdomain in common_subdomains:
+            try:
+                url = f"https://{subdomain}.{domain}"
+                response = session.get(url, timeout=10, allow_redirects=True, verify=True)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    text = soup.get_text()
+                    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                    emails = re.findall(email_pattern, text)
+                    results['emails'].update([e.lower() for e in emails if domain.lower() in e.lower()])
+                time.sleep(1)
+            except Exception:
+                continue
+        
+        if results['emails']:
+            log(f"  ✅ Subdomain Scraping: {len(results['emails'])} email(s)")
+        
+        return {'emails': results['emails']} if results['emails'] else None
+
+    # ========== MÉTHODE 9: WHOIS Enhanced (emails et noms) ==========
+    def run_whois_enhanced(self, website):
+        """WHOIS amélioré pour extraire emails et noms"""
+        if not website or not self.available_tools.get("whois"):
+            return None
+        
+        domain = self.extract_domain(website)
+        res = self.run_cmd(["whois", domain], timeout=30, allow_nonzero=True)
+        
+        if not res or len(res.strip()) < 50:
+            return None
+        
+        results = {'raw': res, 'emails': set(), 'employees': set()}
+        
+        # Extraction des emails depuis WHOIS
+        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        emails = re.findall(email_pattern, res)
+        results['emails'].update([e.lower() for e in emails])
+        
+        # Extraction de noms
+        name_patterns = [
+            r'Registrant Name:\s*(.+)',
+            r'Admin Name:\s*(.+)',
+            r'Tech Name:\s*(.+)',
+        ]
+        for pattern in name_patterns:
+            matches = re.findall(pattern, res, re.IGNORECASE)
+            for match in matches:
+                name = match.strip().split('\n')[0].strip()
+                if name and '@' not in name and len(name) < 50:
+                    results['employees'].add(name)
+        
+        # Extraire les infos importantes pour le raw
+        lines = res.splitlines()
+        important_lines = []
+        for line in lines:
+            lower_line = line.lower()
+            if any(keyword in lower_line for keyword in [
+                'registrar:', 'creation date:', 'expiry date:', 'updated date:',
+                'name server:', 'status:', 'organization:', 'registrant'
+            ]):
+                important_lines.append(line.strip())
+        
+        if important_lines:
+            results['raw'] = "\n".join(important_lines[:30])
+            log(f"  ✅ WHOIS Enhanced: {len(results['emails'])} email(s), {len(results['employees'])} nom(s)")
+        else:
+            results['raw'] = res[:4000]
+            log(f"  ✅ WHOIS Enhanced: {len(results['emails'])} email(s)")
+        
+        return results
+
+    # ========== MÉTHODE 10: Réseaux sociaux ==========
+    def run_social_media_scraping(self, website, social_links):
+        """Scrape les pages de réseaux sociaux mentionnées"""
+        if not social_links or not REQUESTS_AVAILABLE or not BS4_AVAILABLE:
+            return None
+        
+        log(f"  🔍 Réseaux sociaux: scan...")
+        results = {'emails': set(), 'employees': set(), 'data_str': None}
+        session = self.get_session()
+        
+        if not session:
+            return None
+        
+        try:
+            links = [link.strip() for link in social_links.split(',') if link.strip()]
+            
+            for link in links[:3]:  # Limite à 3 liens
+                try:
+                    if 'linkedin.com' in link.lower():
+                        response = session.get(link, timeout=10, allow_redirects=True)
+                        if response.status_code == 200:
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            text = soup.get_text()
+                            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                            emails = re.findall(email_pattern, text)
+                            results['emails'].update([e.lower() for e in emails])
+                            
+                            for meta in soup.find_all('meta', property=True):
+                                if 'name' in meta.get('property', '').lower():
+                                    name = meta.get('content', '')
+                                    if name and len(name) < 50:
+                                        results['employees'].add(name)
+                    
+                    elif 'facebook.com' in link.lower() or 'twitter.com' in link.lower() or 'x.com' in link.lower():
+                        response = session.get(link, timeout=10, allow_redirects=True)
+                        if response.status_code == 200:
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            text = soup.get_text()
+                            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                            emails = re.findall(email_pattern, text)
+                            results['emails'].update([e.lower() for e in emails])
+                    
+                    time.sleep(2)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        
+        if results['emails'] or results['employees']:
+            log(f"  ✅ Réseaux sociaux: {len(results['emails'])} email(s), {len(results['employees'])} employé(s)")
+            results['data_str'] = f"Emails: {len(results['emails'])}, Employés: {len(results['employees'])}"
+        
+        return results if (results['emails'] or results['employees']) else None
+
+    # ========== MÉTHODE 11: Commentaires HTML ==========
+    def run_html_comments(self, website):
+        """Extrait les emails depuis les commentaires HTML"""
+        if not website or not REQUESTS_AVAILABLE:
+            return None
+        
+        log(f"  🔍 Commentaires HTML: scan de {website}...")
+        results = {'emails': set()}
+        domain = self.extract_domain(website)
+        session = self.get_session()
+        
+        if not session:
+            return None
+        
+        try:
+            response = session.get(website, timeout=10, verify=True)
+            if response.status_code == 200:
+                html = response.text
+                
+                # Extraction des commentaires HTML
+                comment_pattern = r'<!--(.*?)-->'
+                comments = re.findall(comment_pattern, html, re.DOTALL)
+                
+                email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                
+                for comment in comments:
+                    emails = re.findall(email_pattern, comment)
+                    results['emails'].update([e.lower() for e in emails if domain.lower() in e.lower()])
+                
+                # Extraction depuis les attributs data-* et aria-*
+                if BS4_AVAILABLE:
+                    soup = BeautifulSoup(html, 'html.parser')
+                    for tag in soup.find_all(attrs=True):
+                        for attr, value in tag.attrs.items():
+                            if isinstance(value, str) and '@' in value:
+                                emails = re.findall(email_pattern, value)
+                                results['emails'].update([e.lower() for e in emails if domain.lower() in e.lower()])
+        except Exception:
+            pass
+        
+        if results['emails']:
+            log(f"  ✅ Commentaires HTML: {len(results['emails'])} email(s)")
+            return {
+                'emails': results['emails'],
+                'emails_str': ", ".join(sorted(results['emails']))
+            }
+        
+        return None
+
+    # ========== MÉTHODE 12: GitHub Scraping ==========
+    def run_github_scraping(self, website, company_name):
+        """Cherche des repositories GitHub et extrait des infos"""
+        if not website or not REQUESTS_AVAILABLE or not BS4_AVAILABLE:
+            return None
+        
+        domain = self.extract_domain(website)
+        log(f"  🔍 GitHub Scraping: scan de {domain}...")
+        results = {'emails': set()}
+        session = self.get_session()
+        
+        if not session:
+            return None
+        
+        try:
+            search_url = f"https://github.com/search?q={quote(domain)}&type=repositories"
+            response = session.get(search_url, timeout=10, verify=True)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                text = soup.get_text()
+                
+                email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                emails = re.findall(email_pattern, text)
+                results['emails'].update([e.lower() for e in emails if domain.lower() in e.lower()])
+                
+                # Cherche aussi dans les README des repos
+                repo_links = soup.find_all('a', href=re.compile(r'/.*/.*'))
+                for link in repo_links[:3]:  # Limite à 3 repos
+                    try:
+                        repo_url = f"https://github.com{link.get('href', '')}"
+                        if '/tree/' not in repo_url and '/blob/' not in repo_url:
+                            readme_url = f"{repo_url}/blob/main/README.md"
+                            readme_response = session.get(readme_url, timeout=10, verify=True)
+                            if readme_response.status_code == 200:
+                                readme_text = readme_response.text
+                                emails = re.findall(email_pattern, readme_text)
+                                results['emails'].update([e.lower() for e in emails if domain.lower() in e.lower()])
+                        time.sleep(1)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        
+        if results['emails']:
+            log(f"  ✅ GitHub Scraping: {len(results['emails'])} email(s)")
+            return ", ".join(sorted(results['emails']))
+        
+        return None
+
+    # ========== MÉTHODE 13: Robots.txt/Sitemap ==========
+    def run_robots_sitemap(self, website):
+        """Parse robots.txt et sitemap pour trouver des pages cachées"""
+        if not website or not REQUESTS_AVAILABLE or not BS4_AVAILABLE:
+            return None
+        
+        log(f"  🔍 Robots.txt/Sitemap: scan de {website}...")
+        results = {'emails': set()}
+        domain = self.extract_domain(website)
+        session = self.get_session()
+        
+        if not session:
+            return None
+        
+        try:
+            # Parse robots.txt
+            robots_url = urljoin(website, '/robots.txt')
+            robots_response = session.get(robots_url, timeout=10, verify=True)
+            if robots_response.status_code == 200:
+                sitemap_urls = re.findall(r'Sitemap:\s*(.+)', robots_response.text, re.IGNORECASE)
+                for sitemap_url in sitemap_urls[:2]:  # Limite à 2 sitemaps
+                    try:
+                        sitemap_response = session.get(sitemap_url.strip(), timeout=10, verify=True)
+                        if sitemap_response.status_code == 200:
+                            soup = BeautifulSoup(sitemap_response.text, 'xml')
+                            urls = [loc.text for loc in soup.find_all('loc')[:10]]  # Limite à 10 URLs
+                            
+                            for url in urls:
+                                if any(page in url.lower() for page in ['about', 'team', 'contact', 'staff']):
+                                    page_response = session.get(url, timeout=10, verify=True)
+                                    if page_response.status_code == 200:
+                                        page_soup = BeautifulSoup(page_response.text, 'html.parser')
+                                        text = page_soup.get_text()
+                                        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                                        emails = re.findall(email_pattern, text)
+                                        results['emails'].update([e.lower() for e in emails if domain.lower() in e.lower()])
+                                    time.sleep(1)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        
+        if results['emails']:
+            log(f"  ✅ Robots.txt/Sitemap: {len(results['emails'])} email(s)")
+        
+        return {'emails': results['emails']} if results['emails'] else None
 
     def update_company(self, cid, **fields):
         set_parts = []
