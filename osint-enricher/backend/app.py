@@ -134,6 +134,18 @@ def enrich_status():
         return jsonify(pipeline_runner["status"])
 
 
+@app.route("/api/auth/token", methods=["GET"])
+@auth.login_required
+def get_auth_token():
+    """Endpoint pour obtenir un token après authentification HTTP Basic
+    Ce token peut être utilisé pour SSE (EventSource ne supporte pas HTTP Basic Auth)
+    """
+    # Retourner le mot de passe comme token (simple mais fonctionnel)
+    # En production, on pourrait générer un token JWT avec expiration
+    token = os.getenv("WEB_PASSWORD", "admin")
+    return jsonify({"token": token})
+
+
 @app.route("/api/enrich/logs", methods=["GET"])
 def enrich_logs():
     """Endpoint SSE pour streamer les logs en temps réel
@@ -143,8 +155,8 @@ def enrich_logs():
     token = request.args.get('token')
     expected_token = os.getenv("WEB_PASSWORD", "admin")  # Utilise le même mot de passe que l'auth
     
-    if token != expected_token:
-        return Response("Unauthorized", status=401)
+    if not token or token != expected_token:
+        return Response("Unauthorized", status=401, mimetype='text/plain')
     
     def generate():
         """Générateur pour Server-Sent Events"""

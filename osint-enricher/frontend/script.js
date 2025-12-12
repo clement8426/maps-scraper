@@ -101,61 +101,106 @@ async function initEnrichPage() {
   let eventSource = null;
   let logsBuffer = []; // Buffer pour garder les 200 dernières lignes
   const MAX_LOG_LINES = 200;
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT_ATTEMPTS = 3;
   
-  function connectLogsStream() {
+  async function getAuthToken() {
+    // Récupérer le token depuis localStorage ou depuis l'API
+    let token = localStorage.getItem('osint_token');
+    if (!token) {
+      try {
+        const response = await api.getToken();
+        token = response.token;
+        localStorage.setItem('osint_token', token);
+      } catch (e) {
+        console.error('Erreur récupération token:', e);
+        // Fallback sur 'admin' par défaut
+        token = 'admin';
+      }
+    }
+    return token;
+  }
+  
+  async function connectLogsStream() {
     // Fermer la connexion précédente si elle existe
     if (eventSource) {
       eventSource.close();
+      eventSource = null;
     }
     
-    // Créer une nouvelle connexion SSE
-    // Note: EventSource ne supporte pas HTTP Basic Auth, on utilise un token dans l'URL
-    // Le token est le même que le mot de passe (par défaut "admin", configurable via WEB_PASSWORD)
-    // Pour l'instant, on utilise "admin" par défaut (l'utilisateur peut changer via env var)
-    const token = localStorage.getItem('osint_token') || 'admin';
-    const url = `/api/enrich/logs?token=${encodeURIComponent(token)}`;
-    eventSource = new EventSource(url);
+    // Limiter les tentatives de reconnexion
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error('Trop de tentatives de reconnexion, arrêt');
+      logBox.textContent += '\n❌ Impossible de se reconnecter au streaming de logs';
+      return;
+    }
     
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        
-        if (data.type === 'connected') {
-          console.log('✅ Connexion SSE établie');
-          logBox.textContent = '📡 Connexion au streaming de logs établie...\n';
-        } else if (data.type === 'log') {
-          // Ajouter le log au buffer
-          logsBuffer.push(data.message);
+    try {
+      // Récupérer le token automatiquement
+      const token = await getAuthToken();
+      const url = `/api/enrich/logs?token=${encodeURIComponent(token)}`;
+      
+      console.log('Connexion SSE...');
+      eventSource = new EventSource(url);
+      reconnectAttempts = 0; // Réinitialiser le compteur en cas de succès
+      
+      eventSource.onopen = () => {
+        console.log('✅ Connexion SSE établie');
+        reconnectAttempts = 0; // Réinitialiser le compteur
+      };
+      
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
           
-          // Limiter la taille du buffer
-          if (logsBuffer.length > MAX_LOG_LINES) {
-            logsBuffer.shift(); // Enlever la plus ancienne ligne
+          if (data.type === 'connected') {
+            console.log('✅ Connexion SSE établie');
+            logBox.textContent = '📡 Connexion au streaming de logs établie...\n';
+            reconnectAttempts = 0; // Réinitialiser le compteur
+          } else if (data.type === 'log') {
+            // Ajouter le log au buffer
+            logsBuffer.push(data.message);
+            
+            // Limiter la taille du buffer
+            if (logsBuffer.length > MAX_LOG_LINES) {
+              logsBuffer.shift(); // Enlever la plus ancienne ligne
+            }
+            
+            // Mettre à jour l'affichage
+            logBox.textContent = logsBuffer.join('\n');
+            logBox.scrollTop = logBox.scrollHeight; // Auto-scroll en bas
+          } else if (data.type === 'heartbeat') {
+            // Heartbeat pour garder la connexion ouverte (on ne fait rien)
+          } else if (data.type === 'error') {
+            console.error('Erreur SSE:', data.message);
+            logBox.textContent += `\n❌ Erreur: ${data.message}`;
           }
-          
-          // Mettre à jour l'affichage
-          logBox.textContent = logsBuffer.join('\n');
-          logBox.scrollTop = logBox.scrollHeight; // Auto-scroll en bas
-        } else if (data.type === 'heartbeat') {
-          // Heartbeat pour garder la connexion ouverte (on ne fait rien)
-        } else if (data.type === 'error') {
-          console.error('Erreur SSE:', data.message);
-          logBox.textContent += `\n❌ Erreur: ${data.message}`;
+        } catch (e) {
+          console.error('Erreur parsing SSE:', e);
         }
-      } catch (e) {
-        console.error('Erreur parsing SSE:', e);
-      }
-    };
-    
-    eventSource.onerror = (error) => {
-      console.error('Erreur EventSource:', error);
-      // Tentative de reconnexion automatique après 3 secondes
-      setTimeout(() => {
+      };
+      
+      eventSource.onerror = (error) => {
+        console.error('Erreur EventSource:', error, 'ReadyState:', eventSource?.readyState);
+        
+        // Si la connexion est fermée (readyState === 2), tenter de se reconnecter
         if (eventSource && eventSource.readyState === EventSource.CLOSED) {
-          console.log('Tentative de reconnexion SSE...');
-          connectLogsStream();
+          reconnectAttempts++;
+          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            console.log(`Tentative de reconnexion SSE (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+            setTimeout(() => {
+              connectLogsStream();
+            }, 3000);
+          } else {
+            console.error('Trop de tentatives de reconnexion');
+            logBox.textContent += '\n❌ Impossible de maintenir la connexion au streaming';
+          }
         }
-      }, 3000);
-    };
+      };
+    } catch (e) {
+      console.error('Erreur lors de la connexion SSE:', e);
+      reconnectAttempts++;
+    }
   }
   
   function disconnectLogsStream() {
@@ -164,6 +209,7 @@ async function initEnrichPage() {
       eventSource = null;
     }
     logsBuffer = [];
+    reconnectAttempts = 0; // Réinitialiser le compteur
   }
 
   startBtn.onclick = async () => {
