@@ -10,7 +10,12 @@ if [ -f "$SERVICE_FILE" ]; then
     sudo cp "$SERVICE_FILE" "${SERVICE_FILE}.backup"
     
     # Modifier la ligne ExecStart pour ajouter --timeout 600
-    sudo sed -i 's|ExecStart=.*gunicorn.*app:app|ExecStart=/home/ubuntu/maps-scraper/osint-enricher/venv/bin/gunicorn --bind 127.0.0.1:5001 app:app --workers 1 --timeout 600 --keep-alive 5|g' "$SERVICE_FILE"
+    # D'abord enlever les anciens paramètres pour éviter les doublons
+    sudo sed -i 's|--workers [0-9]*||g' "$SERVICE_FILE"
+    sudo sed -i 's|--timeout [0-9]*||g' "$SERVICE_FILE"
+    sudo sed -i 's|--keep-alive [0-9]*||g' "$SERVICE_FILE"
+    # Puis ajouter les nouveaux paramètres
+    sudo sed -i 's|app:app|app:app --workers 1 --timeout 600 --keep-alive 5|g' "$SERVICE_FILE"
     
     # Recharger et redémarrer
     sudo systemctl daemon-reload
