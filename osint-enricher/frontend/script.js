@@ -54,47 +54,56 @@ async function initEnrichPage() {
   }
 
   async function refreshStatus() {
-    const st = await api.status();
-    
-    // 🔍 DEBUG: Afficher TOUT ce que le backend renvoie
-    console.log('=== REFRESH STATUS ===');
-    console.log('Timestamp:', new Date().toLocaleTimeString());
-    console.log('Backend response:', JSON.stringify(st, null, 2));
-    console.log('st.running:', st.running);
-    console.log('st.processed:', st.processed);
-    console.log('st.total:', st.total);
-    console.log('st.message:', st.message);
-    console.log('st.finished_at:', st.finished_at);
-    
-    // Détection simple : si processed >= total ET total > 0, c'est terminé
-    const isCompleted = (st.total > 0 && st.processed >= st.total);
-    const isRunning = st.running && !isCompleted;
-    
-    console.log('Calculated isCompleted:', isCompleted);
-    console.log('Calculated isRunning:', isRunning);
-    console.log('=====================');
-    
-    // Mise à jour du statut
-    if (isRunning) {
-      statusEl.textContent = '🔄 En cours';
-      statusEl.className = 'status status-running';
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      lastRunningState = true;
-    } else {
-      statusEl.textContent = isCompleted ? '✅ Terminé' : '⏸️ Arrêté';
-      statusEl.className = isCompleted ? 'status status-success' : 'status status-stopped';
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      lastRunningState = false;
-    }
-    
-    // Mise à jour de la progression
-    if (st.total > 0) {
-      const percentage = Math.round((st.processed / st.total) * 100);
-      progressEl.textContent = `${st.processed}/${st.total} (${percentage}%)`;
-    } else {
-      progressEl.textContent = `0/0`;
+    try {
+      // Timeout de 5 secondes pour éviter de bloquer
+      const st = await Promise.race([
+        api.status(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+      ]);
+      
+      // 🔍 DEBUG: Afficher TOUT ce que le backend renvoie
+      console.log('=== REFRESH STATUS ===');
+      console.log('Timestamp:', new Date().toLocaleTimeString());
+      console.log('Backend response:', JSON.stringify(st, null, 2));
+      console.log('st.running:', st.running);
+      console.log('st.processed:', st.processed);
+      console.log('st.total:', st.total);
+      console.log('st.message:', st.message);
+      console.log('st.finished_at:', st.finished_at);
+      
+      // Détection simple : si processed >= total ET total > 0, c'est terminé
+      const isCompleted = (st.total > 0 && st.processed >= st.total);
+      const isRunning = st.running && !isCompleted;
+      
+      console.log('Calculated isCompleted:', isCompleted);
+      console.log('Calculated isRunning:', isRunning);
+      console.log('=====================');
+      
+      // Mise à jour du statut
+      if (isRunning) {
+        statusEl.textContent = '🔄 En cours';
+        statusEl.className = 'status status-running';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        lastRunningState = true;
+      } else {
+        statusEl.textContent = isCompleted ? '✅ Terminé' : '⏸️ Arrêté';
+        statusEl.className = isCompleted ? 'status status-success' : 'status status-stopped';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        lastRunningState = false;
+      }
+      
+      // Mise à jour de la progression
+      if (st.total > 0) {
+        const percentage = Math.round((st.processed / st.total) * 100);
+        progressEl.textContent = `${st.processed}/${st.total} (${percentage}%)`;
+      } else {
+        progressEl.textContent = `0/0`;
+      }
+    } catch (e) {
+      console.error('Erreur refreshStatus:', e);
+      // En cas d'erreur, ne pas bloquer l'interface
     }
   }
 
@@ -272,10 +281,18 @@ async function initEnrichPage() {
     };
   }
 
-  await loadCities();
-  await refreshStatus();
-  // Démarrer le streaming des logs en temps réel (SSE)
-  connectLogsStream();
+  // Charger les données en parallèle (plus rapide)
+  await Promise.all([
+    loadCities(),
+    refreshStatus()
+  ]);
+  
+  // Démarrer le streaming des logs en arrière-plan (non-bloquant)
+  // Utiliser setTimeout pour ne pas bloquer le chargement de la page
+  setTimeout(() => {
+    connectLogsStream();
+  }, 500);
+  
   setInterval(refreshStatus, 3000);  // Plus rapide pour détecter la fin
 }
 

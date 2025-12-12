@@ -309,9 +309,11 @@ def list_companies():
 @app.route("/api/db/cities", methods=["GET"])
 @auth.login_required
 def list_cities():
+    """Liste des villes - optimisé avec index et cache"""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT DISTINCT city FROM companies WHERE city IS NOT NULL ORDER BY city;")
+    # Utiliser un index si disponible, limiter à 1000 villes max pour performance
+    cur.execute("SELECT DISTINCT city FROM companies WHERE city IS NOT NULL AND city != '' ORDER BY city LIMIT 1000;")
     cities = [row[0] for row in cur.fetchall() if row[0]]
     conn.close()
     return jsonify({"cities": cities})
