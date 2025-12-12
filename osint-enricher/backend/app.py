@@ -178,7 +178,7 @@ def enrich_logs():
                 yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
                 break
     
-    response = Response(
+    return Response(
         stream_with_context(generate()),
         mimetype='text/event-stream',
         headers={
@@ -188,9 +188,6 @@ def enrich_logs():
             'X-Content-Type-Options': 'nosniff'
         }
     )
-    # Désactiver le timeout pour les connexions SSE
-    response.timeout = None
-    return response
 
 
 # ---------- DB VIEWER ----------
