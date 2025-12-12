@@ -3,6 +3,9 @@
 
 set -e
 
+# Variables
+APP_DIR="/home/ubuntu/maps-scraper/osint-enricher"
+
 echo "=== Correction erreur 502 et lenteur ==="
 echo ""
 
@@ -71,20 +74,26 @@ else
     echo "⚠️  Fichier nginx non trouvé: $NGINX_CONFIG"
 fi
 
-# 4. Vérifier le service systemd (s'assurer qu'il utilise 1 worker pour éviter les conflits)
+# 4. Vérifier le service systemd (s'assurer qu'il utilise 1 worker + timeout augmenté)
 echo "4. Vérification service systemd..."
 SERVICE_FILE="/etc/systemd/system/osint-enricher.service"
 
 if [ -f "$SERVICE_FILE" ]; then
-    # Vérifier si --workers 1 est présent
-    if ! grep -q "--workers 1" "$SERVICE_FILE"; then
-        echo "  → Modification pour utiliser 1 worker (évite les conflits SSE)"
-        sudo sed -i 's/--workers [0-9]/--workers 1/g' "$SERVICE_FILE" || \
-        sudo sed -i 's/app:app/app:app --workers 1/g' "$SERVICE_FILE"
+    # Sauvegarder l'ancienne config
+    sudo cp "$SERVICE_FILE" "${SERVICE_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    # Vérifier si --workers 1 et --timeout sont présents
+    HAS_WORKERS=$(grep -q "--workers 1" "$SERVICE_FILE" && echo "yes" || echo "no")
+    HAS_TIMEOUT=$(grep -q "--timeout" "$SERVICE_FILE" && echo "yes" || echo "no")
+    
+    if [ "$HAS_WORKERS" = "no" ] || [ "$HAS_TIMEOUT" = "no" ]; then
+        echo "  → Modification pour utiliser 1 worker + timeout 600s"
+        # Remplacer la ligne ExecStart
+        sudo sed -i 's|ExecStart=.*gunicorn.*|ExecStart='${APP_DIR}'/venv/bin/gunicorn --bind 127.0.0.1:5001 app:app --workers 1 --timeout 600 --keep-alive 5|g' "$SERVICE_FILE"
         sudo systemctl daemon-reload
-        echo "✅ Service modifié pour utiliser 1 worker"
+        echo "✅ Service modifié (1 worker, timeout 600s)"
     else
-        echo "✅ Service déjà configuré avec 1 worker"
+        echo "✅ Service déjà configuré correctement"
     fi
 else
     echo "⚠️  Fichier service non trouvé: $SERVICE_FILE"
