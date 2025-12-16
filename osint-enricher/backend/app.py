@@ -201,6 +201,10 @@ def ensure_columns():
         ("wayback_urls", "TEXT"),
         ("osint_status", "TEXT"),
         ("osint_updated_at", "TEXT"),
+        ("osint_employees", "TEXT"),
+        ("osint_html_comments", "TEXT"),
+        ("osint_github_data", "TEXT"),
+        ("osint_social_data", "TEXT"),
     ]
     conn = get_db_connection()
     cur = conn.cursor()
@@ -244,7 +248,8 @@ def list_companies():
                website, rating, reviews_count, email, social_links,
                status, created_at, updated_at,
                tech_stack, emails_osint, pdf_emails, subdomains, 
-               whois_raw, wayback_urls, osint_status, osint_updated_at
+               whois_raw, wayback_urls, osint_status, osint_updated_at,
+               osint_employees, osint_html_comments, osint_github_data, osint_social_data
         FROM companies
         {where_clause}
         ORDER BY updated_at DESC
@@ -269,6 +274,7 @@ def list_companies():
     # 12:status, 13:created_at, 14:updated_at,
     # 15:tech_stack, 16:emails_osint, 17:pdf_emails, 18:subdomains,
     # 19:whois_raw, 20:wayback_urls, 21:osint_status, 22:osint_updated_at
+    # 23:osint_employees, 24:osint_html_comments, 25:osint_github_data, 26:osint_social_data
     
     data = [
         {
@@ -297,6 +303,10 @@ def list_companies():
             "wayback_urls_full": r[20],
             "osint_status": r[21],
             "osint_updated_at": r[22],
+            "osint_employees": r[23],
+            "osint_html_comments": r[24],
+            "osint_github_data": r[25],
+            "osint_social_data": r[26],
             # Données complètes pour la modal
             "address_full": r[5],
             "social_links_full": r[11],
