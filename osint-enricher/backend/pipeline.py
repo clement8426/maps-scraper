@@ -154,28 +154,30 @@ class OsintPipeline:
         return rows
 
     def run(self, city=None, limit=50, require_website=True):
-        log("=" * 60)
-        log("🚀 Pipeline OSINT démarré")
-        log(f"📋 Paramètres: city={city}, limit={limit}, require_website={require_website}")
-        targets = self.fetch_targets(city, limit, require_website)
-        total = len(targets)
-        self.status["total"] = total
-        if total == 0:
-            self.status["message"] = "Aucune cible à enrichir"
-            log("⚠️  Aucune cible trouvée avec ces filtres")
-            return
-        
-        # Afficher les IDs récupérés pour diagnostic
-        ids_list = [str(row[0]) for row in targets[:10]]
-        if total > 10:
-            ids_preview = ", ".join(ids_list) + f"... (+{total-10} autres)"
-        else:
-            ids_preview = ", ".join(ids_list)
-        
-        log(f"✅ {total} cible(s) trouvée(s)")
-        log(f"📊 IDs à enrichir: {ids_preview}")
+        try:
+            log("=" * 60)
+            log("🚀 Pipeline OSINT démarré")
+            log(f"📋 Paramètres: city={city}, limit={limit}, require_website={require_website}")
+            targets = self.fetch_targets(city, limit, require_website)
+            total = len(targets)
+            self.status["total"] = total
+            if total == 0:
+                self.status["message"] = "Aucune cible à enrichir"
+                self.status["running"] = False
+                log("⚠️  Aucune cible trouvée avec ces filtres")
+                return
+            
+            # Afficher les IDs récupérés pour diagnostic
+            ids_list = [str(row[0]) for row in targets[:10]]
+            if total > 10:
+                ids_preview = ", ".join(ids_list) + f"... (+{total-10} autres)"
+            else:
+                ids_preview = ", ".join(ids_list)
+            
+            log(f"✅ {total} cible(s) trouvée(s)")
+            log(f"📊 IDs à enrichir: {ids_preview}")
 
-        for idx, (cid, name, website, email, social_links) in enumerate(targets, start=1):
+            for idx, (cid, name, website, email, social_links) in enumerate(targets, start=1):
             if self.stop_flag():
                 log("⏸️  Arrêt demandé, sortie propre.")
                 self.status["message"] = "Arrêt demandé"
@@ -340,26 +342,45 @@ class OsintPipeline:
             log("")
             log(f"💾 Sauvegarde en BDD...")
             log(f"   ID: {cid} | Entreprise: {name}")
-            self.update_company(
-                cid,
-                tech_stack=tech_stack,
-                emails_osint=emails_osint if emails_osint else None,
-                pdf_emails=pdf_emails if pdf_emails else None,
-                subdomains=subdomains,
-                whois_raw=whois_raw,
-                wayback_urls=wayback_urls,
-                osint_employees=osint_employees,
-                osint_html_comments=osint_html_comments,
-                osint_github_data=github_data,
-                osint_social_data=social_data.get('data_str') if social_data else None,
-            )
-            log(f"✅ ID {cid} - {name} terminé et sauvegardé en BDD")
-            time.sleep(1.0)
+            try:
+                self.update_company(
+                    cid,
+                    tech_stack=tech_stack,
+                    emails_osint=emails_osint if emails_osint else None,
+                    pdf_emails=pdf_emails if pdf_emails else None,
+                    subdomains=subdomains,
+                    whois_raw=whois_raw,
+                    wayback_urls=wayback_urls,
+                    osint_employees=osint_employees,
+                    osint_html_comments=osint_html_comments,
+                    osint_github_data=github_data,
+                    osint_social_data=social_data.get('data_str') if social_data else None,
+                )
+                log(f"✅ ID {cid} - {name} terminé et sauvegardé en BDD")
+            except Exception as e:
+                log(f"  ❌ ERREUR lors de la sauvegarde ID {cid}: {str(e)}")
+                import traceback
+                log(f"  📋 Traceback: {traceback.format_exc()[:500]}")
+                # Continuer quand même
+            
+                # ✅ CORRECTION: Mettre à jour processed APRÈS avoir terminé l'entreprise
+                self.status["processed"] = idx
+                time.sleep(1.0)
 
-        self.status["processed"] = min(self.status.get("processed", 0), total)
-        self.status["running"] = False
-        self.status["message"] = "Terminé"
-        log("Pipeline terminé.")
+            # ✅ CORRECTION: S'assurer que processed = total à la fin
+            self.status["processed"] = total
+            self.status["running"] = False
+            self.status["message"] = "Terminé"
+            log("Pipeline terminé.")
+        except Exception as e:
+            log(f"❌ ERREUR CRITIQUE dans run(): {str(e)}")
+            import traceback
+            log(f"📋 Traceback: {traceback.format_exc()}")
+            # S'assurer que le statut est mis à jour même en cas d'erreur
+            self.status["running"] = False
+            self.status["message"] = f"Erreur: {str(e)[:100]}"
+            # Re-lancer pour que app.py le capture dans le finally
+            raise
 
     # ---------- Individual steps ----------
     def run_cmd(self, cmd, timeout=40, allow_nonzero=False):
