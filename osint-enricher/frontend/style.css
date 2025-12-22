@@ -33,6 +33,12 @@ header {
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -255,4 +261,24 @@ header {
   font-family: monospace;
   font-size: 13px;
   line-height: 1.6;
+}
+
+/* Responsive: Mobile */
+@media (max-width: 768px) {
+  header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .header-actions {
+    flex-direction: column;
+    width: 100%;
+    gap: 10px;
+  }
+  
+  .header-actions .btn {
+    width: 100%;
+    text-align: center;
+  }
 }
