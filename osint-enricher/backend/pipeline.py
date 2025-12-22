@@ -242,11 +242,15 @@ class OsintPipeline:
                     log("  🔍 Démarrage Extraction PDF...")
                     pdf_result = self.run_pdf_extraction(website)
                     if pdf_result:
-                        pdf_emails = pdf_result.get('emails')
-                        if pdf_emails:
+                        pdf_emails_set = pdf_result.get('emails')
+                        if pdf_emails_set:
+                            # Convertir le set en string pour SQLite
+                            pdf_emails = ", ".join(sorted(pdf_emails_set)) if isinstance(pdf_emails_set, set) else pdf_emails_set
                             existing_emails = set((emails_osint or "").split(", "))
                             existing_emails.update(pdf_result['emails'])
                             emails_osint = ", ".join(sorted(existing_emails))
+                        else:
+                            pdf_emails = None
                     else:
                         pdf_emails = None
                     log(f"  ✅ Extraction PDF terminé")
@@ -1605,7 +1609,22 @@ class OsintPipeline:
         
         for k, v in fields.items():
             set_parts.append(f"{k} = ?")
-            params.append(v)
+            # Convertir les types Python non supportés par SQLite en types compatibles
+            if v is None:
+                params.append(None)
+            elif isinstance(v, set):
+                # Convertir set en string
+                params.append(", ".join(sorted(v)) if v else None)
+            elif isinstance(v, list):
+                # Convertir list en string
+                params.append(", ".join(str(x) for x in v) if v else None)
+            elif isinstance(v, dict):
+                # Convertir dict en JSON string
+                import json
+                params.append(json.dumps(v) if v else None)
+            else:
+                # Types SQLite-compatibles : str, int, float, bytes, None
+                params.append(v)
         set_parts.append("osint_status = ?")
         params.append("Done")
         set_parts.append("osint_updated_at = ?")
