@@ -920,7 +920,9 @@ class OsintPipeline:
                 
                 # Limite à 5 PDFs
                 pdfs_processed = 0
+                pdf_urls_found = []
                 for idx, pdf_url in enumerate(pdf_links[:5], 1):
+                    pdf_urls_found.append(pdf_url)
                     try:
                         log(f"     📥 Téléchargement PDF #{idx}: {pdf_url}")
                         pdf_response = session.get(pdf_url, timeout=15, verify=True)
@@ -965,6 +967,10 @@ class OsintPipeline:
                         continue
                 
                 log(f"     📊 Résumé: {pdfs_processed} PDFs traités avec succès")
+                if pdf_urls_found:
+                    log(f"     📎 Liens PDF trouvés ({len(pdf_urls_found)}):")
+                    for pdf_url in pdf_urls_found:
+                        log(f"        - {pdf_url}")
             else:
                 log(f"     ⚠️  Échec de la requête: status {response.status_code}")
         except Exception as e:
@@ -1393,46 +1399,96 @@ class OsintPipeline:
                 
                 # Cherche aussi dans les README des repos
                 repo_links = soup.find_all('a', href=re.compile(r'/.*/.*'))
-                log(f"     📦 Repositories trouvés: {len(repo_links)} liens, analyse des 3 premiers...")
+                log(f"     📦 Repositories trouvés: {len(repo_links)} liens, filtrage des repos pertinents...")
+                
+                # Filtrer les repos pertinents (exclure les repos génériques GitHub)
+                relevant_repos = []
+                excluded_patterns = ['/features/', '/github/', '/blog', '/site', '/explore', '/trending', '/topics', '/sponsors', '/marketplace']
+                domain_parts = domain.replace('.', '-').split('-')
+                
+                for link in repo_links:
+                    href = link.get('href', '').strip()
+                    if not href:
+                        continue
+                    
+                    # Nettoyer l'URL
+                    if href.startswith('https://github.com'):
+                        repo_path = href.replace('https://github.com', '')
+                    elif href.startswith('http://github.com'):
+                        repo_path = href.replace('http://github.com', '')
+                    elif href.startswith('/'):
+                        repo_path = href
+                    else:
+                        continue
+                    
+                    # Exclure les repos génériques GitHub
+                    if any(pattern in repo_path.lower() for pattern in excluded_patterns):
+                        continue
+                    
+                    # Exclure les liens vers des pages GitHub (tree, blob, search, etc.)
+                    if any(x in repo_path.lower() for x in ['/tree/', '/blob/', '/search', '/pull/', '/issues/', '/releases/']):
+                        continue
+                    
+                    # Prioriser les repos qui contiennent le domaine ou des parties du domaine
+                    repo_lower = repo_path.lower()
+                    domain_lower = domain.lower()
+                    is_relevant = (
+                        domain_lower in repo_lower or
+                        any(part in repo_lower for part in domain_parts if len(part) > 3) or
+                        company_name.lower() in repo_lower if company_name else False
+                    )
+                    
+                    if is_relevant:
+                        relevant_repos.append((repo_path, href))
+                
+                # Trier : repos pertinents d'abord, puis autres
+                relevant_repos.sort(key=lambda x: (
+                    domain.lower() in x[0].lower(),
+                    any(part in x[0].lower() for part in domain_parts if len(part) > 3)
+                ), reverse=True)
+                
+                log(f"     ✅ Repos pertinents filtrés: {len(relevant_repos)} (sur {len(repo_links)} total)")
                 repos_checked = 0
-                for link in repo_links[:3]:  # Limite à 3 repos
+                
+                for repo_path, href in relevant_repos[:5]:  # Limite à 5 repos pertinents
                     try:
-                        href = link.get('href', '').strip()
-                        # Nettoyer l'URL : si elle commence déjà par https://github.com, l'utiliser telle quelle
-                        if href.startswith('https://github.com'):
-                            repo_url = href
-                        elif href.startswith('http://github.com'):
+                        # Construire l'URL complète
+                        if href.startswith('https://github.com') or href.startswith('http://github.com'):
                             repo_url = href.replace('http://', 'https://')
                         elif href.startswith('/'):
                             repo_url = f"https://github.com{href}"
                         else:
-                            continue  # Skip les liens invalides
+                            repo_url = f"https://github.com{repo_path}"
                         
-                        if '/tree/' not in repo_url and '/blob/' not in repo_url and '/search' not in repo_url:
-                            readme_url = f"{repo_url}/blob/main/README.md"
-                            log(f"     📄 Lecture README: {readme_url}")
-                            readme_response = session.get(readme_url, timeout=10, verify=True)
-                            log(f"     📊 README réponse: status={readme_response.status_code}")
+                        # Nettoyer l'URL (enlever les fragments)
+                        repo_url = repo_url.split('#')[0].split('?')[0].rstrip('/')
+                        
+                        log(f"     🔍 Analyse repo: {repo_url}")
+                        
+                        readme_url = f"{repo_url}/blob/main/README.md"
+                        log(f"     📄 Lecture README: {readme_url}")
+                        readme_response = session.get(readme_url, timeout=10, verify=True)
+                        log(f"     📊 README réponse: status={readme_response.status_code}")
+                        if readme_response.status_code == 200:
+                            readme_text = readme_response.text
+                            emails = re.findall(email_pattern, readme_text)
+                            emails_filtered = [e.lower() for e in emails if domain.lower() in e.lower()]
+                            if emails_filtered:
+                                log(f"     ✅ Emails trouvés dans README: {len(emails_filtered)}")
+                            results['emails'].update(emails_filtered)
+                            repos_checked += 1
+                        elif readme_response.status_code == 404:
+                            log(f"     ℹ️  README non trouvé (404), essai avec /master...")
+                            readme_url_master = f"{repo_url}/blob/master/README.md"
+                            readme_response = session.get(readme_url_master, timeout=10, verify=True)
                             if readme_response.status_code == 200:
                                 readme_text = readme_response.text
                                 emails = re.findall(email_pattern, readme_text)
                                 emails_filtered = [e.lower() for e in emails if domain.lower() in e.lower()]
                                 if emails_filtered:
-                                    log(f"     ✅ Emails trouvés dans README: {len(emails_filtered)}")
+                                    log(f"     ✅ Emails trouvés dans README (master): {len(emails_filtered)}")
                                 results['emails'].update(emails_filtered)
                                 repos_checked += 1
-                            elif readme_response.status_code == 404:
-                                log(f"     ℹ️  README non trouvé (404), essai avec /master...")
-                                readme_url_master = f"{repo_url}/blob/master/README.md"
-                                readme_response = session.get(readme_url_master, timeout=10, verify=True)
-                                if readme_response.status_code == 200:
-                                    readme_text = readme_response.text
-                                    emails = re.findall(email_pattern, readme_text)
-                                    emails_filtered = [e.lower() for e in emails if domain.lower() in e.lower()]
-                                    if emails_filtered:
-                                        log(f"     ✅ Emails trouvés dans README (master): {len(emails_filtered)}")
-                                    results['emails'].update(emails_filtered)
-                                    repos_checked += 1
                         time.sleep(1)
                     except Exception as e:
                         log(f"     ⚠️  Erreur lors de l'analyse du repo: {str(e)[:50]}")
