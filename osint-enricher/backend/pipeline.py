@@ -1397,8 +1397,18 @@ class OsintPipeline:
                 repos_checked = 0
                 for link in repo_links[:3]:  # Limite à 3 repos
                     try:
-                        repo_url = f"https://github.com{link.get('href', '')}"
-                        if '/tree/' not in repo_url and '/blob/' not in repo_url:
+                        href = link.get('href', '').strip()
+                        # Nettoyer l'URL : si elle commence déjà par https://github.com, l'utiliser telle quelle
+                        if href.startswith('https://github.com'):
+                            repo_url = href
+                        elif href.startswith('http://github.com'):
+                            repo_url = href.replace('http://', 'https://')
+                        elif href.startswith('/'):
+                            repo_url = f"https://github.com{href}"
+                        else:
+                            continue  # Skip les liens invalides
+                        
+                        if '/tree/' not in repo_url and '/blob/' not in repo_url and '/search' not in repo_url:
                             readme_url = f"{repo_url}/blob/main/README.md"
                             log(f"     📄 Lecture README: {readme_url}")
                             readme_response = session.get(readme_url, timeout=10, verify=True)
@@ -1475,8 +1485,22 @@ class OsintPipeline:
                         log(f"     📊 Sitemap réponse: status={sitemap_response.status_code}")
                         
                         if sitemap_response.status_code == 200:
-                            soup = BeautifulSoup(sitemap_response.text, 'xml')
-                            urls = [loc.text for loc in soup.find_all('loc')[:10]]  # Limite à 10 URLs
+                            # Essayer d'abord avec 'xml', puis 'lxml-xml', puis 'html.parser' en dernier recours
+                            try:
+                                soup = BeautifulSoup(sitemap_response.text, 'xml')
+                            except:
+                                try:
+                                    soup = BeautifulSoup(sitemap_response.text, 'lxml-xml')
+                                except:
+                                    # Fallback: parser comme HTML et chercher les balises <loc>
+                                    soup = BeautifulSoup(sitemap_response.text, 'html.parser')
+                            
+                            urls = []
+                            for loc in soup.find_all('loc')[:10]:  # Limite à 10 URLs
+                                if loc.text:
+                                    urls.append(loc.text.strip())
+                                elif loc.string:
+                                    urls.append(loc.string.strip())
                             log(f"     🔗 URLs trouvées dans sitemap: {len(urls)}")
                             
                             pages_checked = 0
