@@ -820,15 +820,16 @@ class OsintPipeline:
             log(f"  ⚠️  Web Scraping: impossible de créer une session HTTP")
             return None
         
+        # Pages prioritaires seulement (réduire la charge)
         pages_to_check = [
-            '/about', '/about-us', '/team', '/contact', '/contact-us',
-            '/staff', '/employees', '/people', '/equipe', '/a-propos'
+            '/',  # Page principale d'abord
+            '/contact', '/about', '/team', '/a-propos'
         ]
-        pages_to_check.insert(0, '/')  # Page principale
-        log(f"     📄 Pages à analyser: {len(pages_to_check)}")
+        log(f"     📄 Pages à analyser: {len(pages_to_check)} (mode optimisé)")
         
         pages_checked = 0
         pages_accessible = 0
+        emails_found_early = False
         for page in pages_to_check:
             try:
                 url = urljoin(website, page)
@@ -850,26 +851,33 @@ class OsintPipeline:
                         log(f"     ✅ Emails trouvés sur {page}: {len(emails_filtered)}")
                     results['emails'].update(emails_filtered)
                     
-                    # Extraction des noms
-                    name_elements = soup.find_all(['h1', 'h2', 'h3', 'h4', 'strong', 'b'])
-                    names_found_this_page = 0
-                    for elem in name_elements:
-                        text = elem.get_text().strip()
-                        if re.match(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}$', text):
-                            if len(text) > 3 and len(text) < 50:
-                                results['employees'].add(text)
-                                names_found_this_page += 1
-                    if names_found_this_page > 0:
-                        log(f"     ✅ Noms trouvés sur {page}: {names_found_this_page}")
+                    # Early exit si on trouve déjà des emails sur la page principale
+                    if page == '/' and len(results['emails']) >= 2:
+                        log(f"     ⚡ Early exit: {len(results['emails'])} emails trouvés sur la page principale")
+                        emails_found_early = True
+                        break
                     
-                    # Cherche dans les attributs data-*
-                    data_name_tags = soup.find_all(attrs={'data-name': True})
-                    if data_name_tags:
-                        log(f"     🔍 Tags data-name trouvés: {len(data_name_tags)}")
-                        for tag in data_name_tags:
-                            results['employees'].add(tag['data-name'])
+                    # Extraction des noms (seulement si pas d'early exit)
+                    if not emails_found_early:
+                        name_elements = soup.find_all(['h1', 'h2', 'h3', 'h4', 'strong', 'b'])
+                        names_found_this_page = 0
+                        for elem in name_elements:
+                            text = elem.get_text().strip()
+                            if re.match(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}$', text):
+                                if len(text) > 3 and len(text) < 50:
+                                    results['employees'].add(text)
+                                    names_found_this_page += 1
+                        if names_found_this_page > 0:
+                            log(f"     ✅ Noms trouvés sur {page}: {names_found_this_page}")
+                        
+                        # Cherche dans les attributs data-*
+                        data_name_tags = soup.find_all(attrs={'data-name': True})
+                        if data_name_tags:
+                            log(f"     🔍 Tags data-name trouvés: {len(data_name_tags)}")
+                            for tag in data_name_tags:
+                                results['employees'].add(tag['data-name'])
                 
-                time.sleep(1)  # Délai entre les pages
+                time.sleep(2)  # Délai augmenté entre les pages (2s au lieu de 1s)
             except Exception as e:
                 log(f"     ⚠️  Erreur pour {page}: {str(e)[:30]}")
                 continue
@@ -920,12 +928,12 @@ class OsintPipeline:
                         full_url = urljoin(website, href)
                         pdf_links.append(full_url)
                 
-                log(f"     📄 PDFs trouvés: {len(pdf_links)}, analyse des 5 premiers...")
+                log(f"     📄 PDFs trouvés: {len(pdf_links)}, analyse des 3 premiers (mode optimisé)...")
                 
-                # Limite à 5 PDFs
+                # Limite à 3 PDFs (réduire la charge)
                 pdfs_processed = 0
                 pdf_urls_found = []
-                for idx, pdf_url in enumerate(pdf_links[:5], 1):
+                for idx, pdf_url in enumerate(pdf_links[:3], 1):
                     pdf_urls_found.append(pdf_url)
                     try:
                         log(f"     📥 Téléchargement PDF #{idx}: {pdf_url}")
@@ -965,7 +973,7 @@ class OsintPipeline:
                             
                             pdfs_processed += 1
                         
-                        time.sleep(1)
+                        time.sleep(2)  # Délai augmenté (2s au lieu de 1s)
                     except Exception as e:
                         log(f"     ⚠️  Erreur PDF #{idx}: {str(e)[:50]}")
                         continue
@@ -1001,105 +1009,46 @@ class OsintPipeline:
         log(f"  🔍 Google Dorks: scan de {domain}...")
         results = {'emails': set(), 'employees': set()}
         
-        driver = None
-        try:
-            if SELENIUM_AVAILABLE:
-                log(f"     🚀 Selenium disponible, initialisation Firefox headless...")
-                try:
-                    firefox_options = FirefoxOptions()
-                    firefox_options.add_argument('--headless')
-                    firefox_options.add_argument('--no-sandbox')
-                    firefox_options.add_argument('--disable-dev-shm-usage')
-                    firefox_options.set_preference("general.useragent.override", 
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0")
-                    firefox_options.set_preference("dom.webdriver.enabled", False)
-                    firefox_options.set_preference("useAutomationExtension", False)
-                    
-                    driver = webdriver.Firefox(options=firefox_options)
-                    driver.set_page_load_timeout(30)
-                    log(f"     ✅ Firefox headless démarré")
-                except WebDriverException as e:
-                    log(f"     ⚠️  Impossible de démarrer Firefox: {str(e)[:50]}")
-                    driver = None
-            else:
-                log(f"     ⚠️  Selenium non disponible, utilisation de requests (moins efficace)")
-            
-            # Dorks pour trouver des emails
-            dorks = [
-                f'site:{domain} "@{domain}"',
-                f'site:{domain} "email" OR "contact"',
-                f'"{company_name}" "@{domain}"',
-            ]
-            log(f"     🔍 Dorks à tester: {len(dorks)}")
-            
-            session = self.get_session()
-            for idx, dork in enumerate(dorks, 1):
-                try:
-                    search_url = f"https://www.google.com/search?q={quote(dork)}&num=20"
-                    log(f"     📡 Dork #{idx}: {dork}")
-                    log(f"     🌐 URL: {search_url}")
-                    
-                    if driver:
-                        try:
-                            log(f"     🚗 Navigation avec Selenium...")
-                            driver.get(search_url)
-                            time.sleep(3)
-                            page_source = driver.page_source
-                            log(f"     📊 Page chargée: {len(page_source)} bytes")
-                            soup = BeautifulSoup(page_source, 'html.parser')
-                            text = soup.get_text()
-                            
-                            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-                            emails = re.findall(email_pattern, text)
-                            valid_emails = [e.lower() for e in emails if domain.lower() in e.lower()]
-                            if valid_emails:
-                                log(f"     ✅ Emails trouvés avec Selenium: {len(valid_emails)}")
-                            results['emails'].update(valid_emails)
-                            
-                            # Extraction de noms
-                            result_divs = soup.find_all(['div', 'h3'], class_=re.compile(r'result|search'))
-                            log(f"     🔍 Résultats Google analysés: {len(result_divs)}")
-                            for result_div in result_divs:
-                                result_text = result_div.get_text()
-                                name_matches = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b', result_text)
-                                for name in name_matches:
-                                    if len(name) > 3 and len(name) < 50:
-                                        results['employees'].add(name)
-                        except TimeoutException:
-                            log(f"     ⚠️  Timeout Selenium pour dork #{idx}")
-                        except Exception as e:
-                            log(f"     ⚠️  Erreur Selenium: {str(e)[:50]}")
-                    elif session:
-                        log(f"     📡 Requête HTTP avec requests...")
-                        response = session.get(search_url, timeout=10, verify=True)
-                        log(f"     📊 Réponse: status={response.status_code}, taille={len(response.text)} bytes")
-                        if response.status_code == 200:
-                            soup = BeautifulSoup(response.text, 'html.parser')
-                            text = soup.get_text()
-                            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-                            emails = re.findall(email_pattern, text)
-                            valid_emails = [e.lower() for e in emails if domain.lower() in e.lower()]
-                            if valid_emails:
-                                log(f"     ✅ Emails trouvés avec requests: {len(valid_emails)}")
-                            results['emails'].update(valid_emails)
-                        else:
-                            log(f"     ⚠️  Échec requête: status {response.status_code}")
+        # DÉSACTIVER Selenium (trop lourd en ressources) - utiliser seulement requests
+        log(f"     ⚠️  Google Dorks: mode optimisé (Selenium désactivé pour économiser les ressources)")
+        
+        # Dorks pour trouver des emails (3 dorks avec requests uniquement)
+        dorks = [
+            f'site:{domain} "@{domain}"',
+            f'site:{domain} "email" OR "contact"',
+            f'"{company_name}" "@{domain}"',
+        ]
+        log(f"     🔍 Dorks à tester: {len(dorks)} (mode optimisé, sans Selenium)")
+        
+        session = self.get_session()
+        for idx, dork in enumerate(dorks, 1):
+            try:
+                search_url = f"https://www.google.com/search?q={quote(dork)}&num=20"
+                log(f"     📡 Dork #{idx}: {dork}")
+                log(f"     🌐 URL: {search_url}")
+                
+                if session:
+                    log(f"     📡 Requête HTTP avec requests...")
+                    response = session.get(search_url, timeout=10, verify=True)
+                    log(f"     📊 Réponse: status={response.status_code}, taille={len(response.text)} bytes")
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        text = soup.get_text()
+                        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+                        emails = re.findall(email_pattern, text)
+                        valid_emails = [e.lower() for e in emails if domain.lower() in e.lower()]
+                        if valid_emails:
+                            log(f"     ✅ Emails trouvés avec requests: {len(valid_emails)}")
+                        results['emails'].update(valid_emails)
                     else:
-                        log(f"     ⚠️  Pas de session HTTP disponible")
-                    
-                    time.sleep(5)  # Délai pour éviter la détection
-                except Exception as e:
-                    log(f"     ⚠️  Erreur dork #{idx}: {str(e)[:50]}")
-                    continue
-        except Exception as e:
-            log(f"     ❌ Erreur Google Dorks: {str(e)[:100]}")
-        finally:
-            if driver:
-                try:
-                    log(f"     🔚 Fermeture Firefox...")
-                    driver.quit()
-                except:
-                    pass
+                        log(f"     ⚠️  Échec requête: status {response.status_code}")
+                else:
+                    log(f"     ⚠️  Pas de session HTTP disponible")
+                
+                time.sleep(3)  # Délai réduit (3s au lieu de 5s, mais toujours présent)
+            except Exception as e:
+                log(f"     ⚠️  Erreur dork #{idx}: {str(e)[:50]}")
+                continue
         
         if results['emails'] or results['employees']:
             log(f"  ✅ Google Dorks: {len(results['emails'])} email(s), {len(results['employees'])} employé(s)")
@@ -1127,11 +1076,11 @@ class OsintPipeline:
             log(f"  ⚠️  Subdomain Scraping: impossible de créer une session HTTP")
             return None
         
+        # Subdomains prioritaires seulement (réduire la charge)
         common_subdomains = [
-            'www', 'mail', 'webmail', 'blog', 'news', 'newsletter',
-            'contact', 'about', 'team', 'careers', 'jobs'
+            'www', 'mail', 'contact', 'about', 'team'
         ]
-        log(f"     🔗 Subdomains à tester: {len(common_subdomains)}")
+        log(f"     🔗 Subdomains à tester: {len(common_subdomains)} (mode optimisé)")
         
         subdomains_checked = 0
         subdomains_accessible = 0
@@ -1153,7 +1102,7 @@ class OsintPipeline:
                     if emails_filtered:
                         log(f"     ✅ Emails trouvés sur {subdomain}.{domain}: {len(emails_filtered)}")
                     results['emails'].update(emails_filtered)
-                time.sleep(1)
+                time.sleep(2)  # Délai augmenté (2s au lieu de 1s)
             except Exception as e:
                 log(f"     ⚠️  Erreur pour {subdomain}.{domain}: {str(e)[:30]}")
                 continue
@@ -1454,7 +1403,7 @@ class OsintPipeline:
                 log(f"     ✅ Repos pertinents filtrés: {len(relevant_repos)} (sur {len(repo_links)} total)")
                 repos_checked = 0
                 
-                for repo_path, href in relevant_repos[:5]:  # Limite à 5 repos pertinents
+                for repo_path, href in relevant_repos[:3]:  # Limite à 3 repos (réduire la charge)
                     try:
                         # Construire l'URL complète
                         if href.startswith('https://github.com') or href.startswith('http://github.com'):
@@ -1493,7 +1442,7 @@ class OsintPipeline:
                                     log(f"     ✅ Emails trouvés dans README (master): {len(emails_filtered)}")
                                 results['emails'].update(emails_filtered)
                                 repos_checked += 1
-                        time.sleep(1)
+                        time.sleep(2)  # Délai augmenté (2s au lieu de 1s)
                     except Exception as e:
                         log(f"     ⚠️  Erreur lors de l'analyse du repo: {str(e)[:50]}")
                         continue
